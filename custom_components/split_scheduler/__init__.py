@@ -2,14 +2,39 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
+from homeassistant.components.frontend import add_extra_js_url
+from homeassistant.components.http import StaticPathConfig
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers import config_validation as cv, device_registry as dr
+from homeassistant.helpers.typing import ConfigType
+from homeassistant.loader import async_get_integration
 
-from .const import CONF_GROUPS, DOMAIN, PLATFORMS
+from . import websocket
+from .const import CARD_FILENAME, CARD_URL_BASE, CONF_GROUPS, DOMAIN, PLATFORMS
 from .scheduler import SplitScheduler
 
 type SplitSchedulerConfigEntry = ConfigEntry[SplitScheduler]
+
+CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
+
+
+async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
+    """Carte du tableau de bord et API websocket (une fois pour toutes)."""
+    websocket.async_register(hass)
+    version = (await async_get_integration(hass, DOMAIN)).version
+    await hass.http.async_register_static_paths(
+        [
+            StaticPathConfig(
+                CARD_URL_BASE, str(Path(__file__).parent / "frontend"), cache_headers=False
+            )
+        ]
+    )
+    # Chargée sur tous les tableaux de bord : la carte apparaît dans « Ajouter une carte ».
+    add_extra_js_url(hass, f"{CARD_URL_BASE}/{CARD_FILENAME}?v={version}")
+    return True
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: SplitSchedulerConfigEntry) -> bool:

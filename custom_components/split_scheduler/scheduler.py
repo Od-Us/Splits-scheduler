@@ -41,6 +41,7 @@ from .const import (
     STATUS_SCHEDULED,
     STORAGE_VERSION,
     TEMPERATURE_TOLERANCE,
+    ordered,
 )
 from .planning import Program, current_occurrence, next_occurrence
 
@@ -93,9 +94,9 @@ class SplitScheduler:
         self.hass = hass
         self.entry = entry
         options = entry.options
-        self.groups: dict[str, dict] = dict(options.get(CONF_GROUPS, {}))
-        self.profiles: dict[str, dict] = dict(options.get(CONF_PROFILES, {}))
-        self.plannings: dict[str, dict] = dict(options.get(CONF_PLANNINGS, {}))
+        self.groups: dict[str, dict] = ordered(options.get(CONF_GROUPS, {}))
+        self.profiles: dict[str, dict] = ordered(options.get(CONF_PROFILES, {}))
+        self.plannings: dict[str, dict] = ordered(options.get(CONF_PLANNINGS, {}))
         self.states: dict[str, GroupState] = {}
         self._store: Store[dict[str, Any]] = Store(
             hass, STORAGE_VERSION, f"{DOMAIN}.{entry.entry_id}"
@@ -263,6 +264,26 @@ class SplitScheduler:
         self.states[gid].enabled = True
         self.states[gid].override = False
         await self.async_refresh_group(gid, force=True)
+
+    async def async_manual_settings(self, gid: str, settings: dict[str, Any]) -> None:
+        """Réglage manuel (depuis la carte), envoyé à tous les splits du groupe.
+
+        Il vaut dérogation jusqu'au prochain créneau, comme un choix de profil.
+        """
+        state = self.states[gid]
+        state.applied_at = dt_util.utcnow()  # nos propres commandes : pas de détection
+        if state.enabled and state.active_profile_id is not None:
+            state.override = True
+        _LOGGER.info("Groupe « %s » : réglage manuel %s", self.groups[gid]["name"], settings)
+        for entity_id in self.groups[gid][CONF_CLIMATES]:
+            current = self.hass.states.get(entity_id)
+            if current is None or current.state in _NOT_READY:
+                continue
+            try:
+                await self._async_send(entity_id, current, settings)
+            except (HomeAssistantError, ValueError) as err:
+                _LOGGER.warning("Échec du réglage manuel de %s : %s", entity_id, err)
+        self._changed()
 
     # ------------------------------------------------------------------ application aux splits
 

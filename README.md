@@ -25,8 +25,7 @@ Tout se configure depuis l'interface de Home Assistant, sans YAML.
 3. *Paramètres → Appareils et services → Ajouter une intégration →
    « Programmation des splits »*.
 
-Home Assistant 2024.12 ou plus récent est nécessaire. Vérifié sur Home Assistant OS
-avec Core **2026.11.0** (Python 3.14).
+Testée sur Home Assistant Core 2026.10 et 2026.11 (Home Assistant OS).
 
 À l'installation, des profils et des plannings sont créés d'office ; ils sont
 tous modifiables ou supprimables :
@@ -56,16 +55,17 @@ Sur la carte de l'intégration, cliquer sur **Configurer**. Un menu propose :
   saisir une valeur.
 - **Types de planning** : ajout (éventuellement en copiant les programmes d'un
   planning existant), renommage, suppression.
-- **Programme hebdomadaire d'un groupe** : choisir un planning et un groupe,
-  puis saisir chaque jour sous la forme
-
-  ```
-  06:30 Confort, 08:30 Eco, 18:00 Confort, 22:30 Eco
-  ```
-
-  Les formats `6h30`, `7h` et `7` sont acceptés, et la casse comme les accents
-  des noms de profil sont ignorés. La case *Recopier le lundi sur* évite de
-  ressaisir les jours identiques.
+- **Programme hebdomadaire d'un groupe** : choisir un planning et un groupe.
+  La semaine s'affiche jour par jour avec le résumé des changements ; un jour
+  vide indique le profil hérité (« Aucun changement — Eco depuis samedi 23:00 »).
+  - Dans un jour : choisir une ligne pour la **modifier** (heure, profil) ou la
+    **supprimer**, ou **ajouter** une ligne. Les lignes sont toujours triées par
+    heure : une ligne ajoutée à 12:00 s'insère d'elle-même entre 08:30 et 17:00.
+    Chaque profil proposé affiche ses réglages (« Confort — Chauffage · 20 °C »).
+  - *Copier ce jour vers d'autres jours*, *Vider la journée*.
+  - *Saisie rapide (texte)* : tous les jours d'un coup, sous la forme
+    `06:30 Confort, 08:30 Eco, 18:00 Confort, 22:30 Eco` (formats `6h30`, `7h`
+    et `7` acceptés, casse et accents ignorés).
 
 **Pensez à « Enregistrer et fermer »** : les modifications ne sont appliquées
 qu'à ce moment-là, et l'intégration se recharge.
@@ -166,17 +166,46 @@ script:
 
 ## Carte de tableau de bord
 
+L'intégration fournit la carte **« Programmation des splits »**, chargée
+automatiquement : *Modifier le tableau de bord → Ajouter une carte →
+Programmation des splits*. Tout se règle dans son éditeur visuel :
+
+- titre, choix du planning pour tous les groupes, frise du programme du jour ;
+- les groupes affichés et leur ordre (boutons *Monter* / *Descendre*) ;
+- pour chaque groupe :
+  - **température ambiante affichée** : un capteur de la pièce, qui remplace la
+    température mesurée par le split (souvent faussée) ; vide = celle du split ;
+  - **capteurs supplémentaires** affichés sous l'état (humidité, CO₂…) ;
+  - **partie « Modifier »** : choix du planning du groupe, choix d'un profil,
+    réglages manuels proposés (consigne, ventilateur, oscillation, mode).
+
+Chaque groupe montre en permanence la **consigne** (en grand), le profil actif,
+la température ambiante, le statut, la frise du jour et le prochain changement.
+En dérogation, un bandeau indique l'heure de reprise et propose *Reprendre*.
+Le bouton **Modifier** déplie le planning, les profils, les réglages manuels et
+l'interrupteur de programmation. Un réglage manuel est envoyé à **tous les
+splits du groupe** et vaut dérogation jusqu'au prochain créneau.
+
+La carte suit le thème clair ou sombre de Home Assistant. Pour une page
+« Chauffage » plein écran, mettez-la seule dans une vue de type *Panneau*.
+
+Exemple en YAML (l'éditeur visuel écrit la même chose) :
+
 ```yaml
-type: entities
-title: Salon
-entities:
-  - select.salon_profil
-  - select.salon_planning
-  - sensor.salon_statut
-  - sensor.salon_prochain_changement
-  - switch.salon_programmation
-  - button.salon_reprendre_la_programmation
+type: custom:split-scheduler-card
+title: Chauffage
+show_global_planning: true
+show_timeline: true
+groups:
+  - group: 252897f9            # identifiant choisi dans l'éditeur
+    temperature_entity: sensor.salon_temperature
+    sensors: [sensor.salon_humidite]
+    show_planning: true
+    show_profiles: true
+    manual: [temperature, fan_mode, swing_mode]
 ```
+
+Sans liste `groups`, tous les groupes sont affichés avec les réglages par défaut.
 
 ## Splits Faikout (MQTT)
 

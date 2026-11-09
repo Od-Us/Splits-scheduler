@@ -155,7 +155,7 @@
         }
       },
       "program_edit": {
-        "title": "{group} — planning {planning}",
+        "title": "{group} — quick entry ({planning})",
         "description": "For each day, enter profile changes like `06:30 Comfort, 08:30 Eco, 22:30 Eco`. A profile stays active until the next change, even on the following day: an empty day keeps the previous profile.\n\nProfiles: {profiles}\n\n{problems}",
         "data": {
           "mon": "Monday",
@@ -167,6 +167,62 @@
           "sun": "Sunday",
           "copy_monday_to": "Copy Monday to"
         }
+      },
+      "program_week": {
+        "title": "Weekly program",
+        "description": "**{group}** — planning **{planning}**\n\nChoose a day to add, edit or delete its profile changes. An empty day keeps the previous day's last profile.",
+        "menu_options": {
+          "day_mon": "Monday",
+          "day_tue": "Tuesday",
+          "day_wed": "Wednesday",
+          "day_thu": "Thursday",
+          "day_fri": "Friday",
+          "day_sat": "Saturday",
+          "day_sun": "Sunday",
+          "program_copy": "Copy a day to other days",
+          "program_edit": "Quick entry (text)",
+          "init": "Done (back to menu)"
+        },
+        "menu_option_descriptions": {
+          "day_mon": "{mon}",
+          "day_tue": "{tue}",
+          "day_wed": "{wed}",
+          "day_thu": "{thu}",
+          "day_fri": "{fri}",
+          "day_sat": "{sat}",
+          "day_sun": "{sun}"
+        }
+      },
+      "program_day": {
+        "title": "{group} — {day} ({planning})",
+        "description": "{start}\n\nChoose a line to edit or delete, or an action. A new line is placed by its time.",
+        "data": {
+          "choice": "Program lines and actions"
+        }
+      },
+      "program_line": {
+        "title": "{group} — {day}: {line}",
+        "description": "The profile applies from this time until the next line.",
+        "data": {
+          "time": "Time of change",
+          "profile": "Profile applied from this time",
+          "delete": "Delete this line"
+        }
+      },
+      "program_day_copy": {
+        "title": "{group} — copy {day}",
+        "description": "Selected days get exactly the lines of {day} (their current lines are replaced).",
+        "data": {
+          "days": "Copy to"
+        }
+      },
+      "program_copy": {
+        "title": "{group} — copy a day",
+        "description": "Selected days get exactly the lines of the source day (their current lines are replaced).",
+        "data": {
+          "source": "Day to copy",
+          "days": "Copy to"
+        }
       }
     },
     "error": {
@@ -176,7 +232,10 @@
       "profile_in_use": "Profile used in a program: {used}. Remove it from programs first.",
       "keep_one_profile": "Keep at least one profile.",
       "keep_one_planning": "Keep at least one planning.",
-      "invalid_program": "Invalid input (details above)."
+      "invalid_program": "Invalid input (details above).",
+      "time_taken": "A line already exists at this time.",
+      "time_required": "Enter a time.",
+      "profile_required": "Choose a profile."
     }
   },
   "selector": {

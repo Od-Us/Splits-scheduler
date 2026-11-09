@@ -155,7 +155,7 @@
         }
       },
       "program_edit": {
-        "title": "{group} — planning {planning}",
+        "title": "{group} — saisie rapide ({planning})",
         "description": "Pour chaque jour, indiquez les changements de profil sous la forme `06:30 Confort, 08:30 Eco, 18:00 Confort, 22:30 Eco`. Un profil reste actif jusqu'au changement suivant, même le lendemain : un jour vide prolonge le dernier profil de la veille.\n\nProfils : {profiles}\n\n{problems}",
         "data": {
           "mon": "Lundi",
@@ -167,6 +167,62 @@
           "sun": "Dimanche",
           "copy_monday_to": "Recopier le lundi sur"
         }
+      },
+      "program_week": {
+        "title": "Programme hebdomadaire",
+        "description": "**{group}** — planning **{planning}**\n\nChoisissez un jour pour ajouter, modifier ou supprimer ses changements de profil. Un jour vide garde le dernier profil de la veille.",
+        "menu_options": {
+          "day_mon": "Lundi",
+          "day_tue": "Mardi",
+          "day_wed": "Mercredi",
+          "day_thu": "Jeudi",
+          "day_fri": "Vendredi",
+          "day_sat": "Samedi",
+          "day_sun": "Dimanche",
+          "program_copy": "Copier un jour vers d'autres jours",
+          "program_edit": "Saisie rapide (texte)",
+          "init": "Terminé (retour au menu)"
+        },
+        "menu_option_descriptions": {
+          "day_mon": "{mon}",
+          "day_tue": "{tue}",
+          "day_wed": "{wed}",
+          "day_thu": "{thu}",
+          "day_fri": "{fri}",
+          "day_sat": "{sat}",
+          "day_sun": "{sun}"
+        }
+      },
+      "program_day": {
+        "title": "{group} — {day} ({planning})",
+        "description": "{start}\n\nChoisissez une ligne à modifier ou à supprimer, ou une action. Une nouvelle ligne se place d'elle-même selon son heure.",
+        "data": {
+          "choice": "Lignes de programmation et actions"
+        }
+      },
+      "program_line": {
+        "title": "{group} — {day} : {line}",
+        "description": "Le profil s'applique à partir de cette heure, jusqu'à la ligne suivante.",
+        "data": {
+          "time": "Heure du changement",
+          "profile": "Profil appliqué à partir de cette heure",
+          "delete": "Supprimer cette ligne"
+        }
+      },
+      "program_day_copy": {
+        "title": "{group} — copier le {day}",
+        "description": "Les jours choisis reçoivent exactement les lignes du {day} (leurs lignes actuelles sont remplacées).",
+        "data": {
+          "days": "Copier vers"
+        }
+      },
+      "program_copy": {
+        "title": "{group} — copier un jour",
+        "description": "Les jours choisis reçoivent exactement les lignes du jour source (leurs lignes actuelles sont remplacées).",
+        "data": {
+          "source": "Jour à copier",
+          "days": "Copier vers"
+        }
       }
     },
     "error": {
@@ -176,7 +232,10 @@
       "profile_in_use": "Profil utilisé dans un programme : {used}. Retirez-le des programmes avant de le supprimer.",
       "keep_one_profile": "Il faut garder au moins un profil.",
       "keep_one_planning": "Il faut garder au moins un planning.",
-      "invalid_program": "Saisie invalide (détail ci-dessus)."
+      "invalid_program": "Saisie invalide (détail ci-dessus).",
+      "time_taken": "Une ligne existe déjà à cette heure.",
+      "time_required": "Indiquez une heure.",
+      "profile_required": "Choisissez un profil."
     }
   },
   "selector": {

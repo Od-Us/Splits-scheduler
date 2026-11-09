@@ -67,6 +67,8 @@ async def test_options_full_path(hass: HomeAssistant):
     group_id = next(iter(hass.config_entries.options._progress[fid]._options["groups"]))
     result = await flow.async_configure(fid, {"next_step_id": "program_pick"})
     result = await flow.async_configure(fid, {"planning": planning_id, "group": group_id})
+    assert result["step_id"] == "program_week"
+    result = await flow.async_configure(fid, {"next_step_id": "program_edit"})
     assert result["step_id"] == "program_edit"
     result = await flow.async_configure(fid, {"mon": "06:30 Confort, 25:00 Eco"})
     assert result["errors"] == {"mon": "invalid_program"}
@@ -75,7 +77,8 @@ async def test_options_full_path(hass: HomeAssistant):
         fid,
         {"mon": "06:30 Confort, 22:00 nuit", "sat": "09:00 Confort", "copy_monday_to": ["tue", "fri"]},
     )
-    assert result["type"] is FlowResultType.MENU
+    assert result["step_id"] == "program_week"
+    result = await flow.async_configure(fid, {"next_step_id": "init"})
 
     # Suppression d'un profil utilisé : refusée
     result = await flow.async_configure(fid, {"next_step_id": "profiles"})
@@ -99,6 +102,6 @@ async def test_options_full_path(hass: HomeAssistant):
     assert program["1"] == program["4"] == program["0"]
     assert "2" not in program and program["5"] == [["09:00", "confort"]]
     nuit = entry.options["profiles"][nuit_id]
-    assert nuit == {"name": "Nuit", "hvac_mode": "heat", "temperature": 17.0, "fan_mode": "night"}
+    assert nuit == {"name": "Nuit", "hvac_mode": "heat", "temperature": 17.0, "fan_mode": "night", "pos": 8}
     # Rechargée avec les nouvelles entités
     assert hass.states.get("select.bureau_profile") is not None
