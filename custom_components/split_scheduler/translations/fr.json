@@ -1,0 +1,205 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Programmation des splits",
+        "description": "Des profils (Hors gel, Eco, Confort, Boost…) et des plannings (Normal, Vacances, Absence prolongée) sont créés d'office. Créez ensuite vos groupes de splits et leurs programmes depuis le bouton **Configurer** de l'intégration."
+      }
+    },
+    "abort": {
+      "already_configured": "L'intégration est déjà installée.",
+      "single_instance_allowed": "L'intégration est déjà installée."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Programmation des splits",
+        "description": "Choisissez ce que vous voulez modifier. **Pensez à « Enregistrer et fermer »** : sinon les modifications sont perdues.",
+        "menu_options": {
+          "groups": "Groupes de splits",
+          "profiles": "Profils de fonctionnement",
+          "plannings": "Types de planning",
+          "program_pick": "Programme hebdomadaire d'un groupe",
+          "save": "Enregistrer et fermer"
+        }
+      },
+      "groups": {
+        "title": "Groupes de splits",
+        "menu_options": {
+          "group_add": "Ajouter un groupe",
+          "group_edit_pick": "Modifier un groupe",
+          "group_delete": "Supprimer des groupes",
+          "init": "Retour"
+        }
+      },
+      "group_add": {
+        "title": "Nouveau groupe",
+        "data": { "name": "Nom", "climates": "Splits (thermostats)" }
+      },
+      "group_edit_pick": {
+        "title": "Modifier un groupe",
+        "data": { "group": "Groupe" }
+      },
+      "group_edit": {
+        "title": "Modifier le groupe",
+        "data": { "name": "Nom", "climates": "Splits (thermostats)" }
+      },
+      "group_delete": {
+        "title": "Supprimer des groupes",
+        "description": "Les programmes de ces groupes seront aussi supprimés.",
+        "data": { "groups": "Groupes à supprimer" }
+      },
+      "profiles": {
+        "title": "Profils de fonctionnement",
+        "menu_options": {
+          "profile_add": "Ajouter un profil",
+          "profile_edit_pick": "Modifier un profil",
+          "profile_delete": "Supprimer des profils",
+          "init": "Retour"
+        }
+      },
+      "profile_add": {
+        "title": "Nouveau profil",
+        "description": "Un champ laissé vide n'est pas modifié sur les splits. Un profil sans aucun réglage (« Manuel ») ne change rien : il marque seulement le créneau.",
+        "data": {
+          "name": "Nom",
+          "hvac_mode": "Mode",
+          "temperature": "Température de consigne",
+          "fan_mode": "Vitesse du ventilateur",
+          "swing_mode": "Oscillation (verticale)",
+          "swing_horizontal_mode": "Oscillation horizontale"
+        },
+        "data_description": {
+          "fan_mode": "Valeurs proposées par vos splits ; vous pouvez aussi en saisir une.",
+          "temperature": "Ignorée en mode Arrêt et Ventilation seule."
+        }
+      },
+      "profile_edit_pick": {
+        "title": "Modifier un profil",
+        "data": { "profile": "Profil" }
+      },
+      "profile_edit": {
+        "title": "Modifier le profil",
+        "description": "Un champ laissé vide n'est pas modifié sur les splits. Un profil sans aucun réglage (« Manuel ») ne change rien : il marque seulement le créneau.",
+        "data": {
+          "name": "Nom",
+          "hvac_mode": "Mode",
+          "temperature": "Température de consigne",
+          "fan_mode": "Vitesse du ventilateur",
+          "swing_mode": "Oscillation (verticale)",
+          "swing_horizontal_mode": "Oscillation horizontale"
+        },
+        "data_description": {
+          "fan_mode": "Valeurs proposées par vos splits ; vous pouvez aussi en saisir une.",
+          "temperature": "Ignorée en mode Arrêt et Ventilation seule."
+        }
+      },
+      "profile_delete": {
+        "title": "Supprimer des profils",
+        "data": { "profiles": "Profils à supprimer" }
+      },
+      "plannings": {
+        "title": "Types de planning",
+        "menu_options": {
+          "planning_add": "Ajouter un planning",
+          "planning_edit_pick": "Renommer un planning",
+          "planning_delete": "Supprimer des plannings",
+          "init": "Retour"
+        }
+      },
+      "planning_add": {
+        "title": "Nouveau planning",
+        "data": { "name": "Nom", "copy_from": "Copier les programmes de" }
+      },
+      "planning_edit_pick": {
+        "title": "Renommer un planning",
+        "data": { "planning": "Planning" }
+      },
+      "planning_edit": {
+        "title": "Renommer le planning",
+        "data": { "name": "Nom" }
+      },
+      "planning_delete": {
+        "title": "Supprimer des plannings",
+        "data": { "plannings": "Plannings à supprimer" }
+      },
+      "program_pick": {
+        "title": "Programme hebdomadaire",
+        "data": { "planning": "Planning", "group": "Groupe" }
+      },
+      "program_edit": {
+        "title": "{group} — planning {planning}",
+        "description": "Pour chaque jour, indiquez les changements de profil sous la forme `06:30 Confort, 08:30 Eco, 18:00 Confort, 22:30 Eco`. Un profil reste actif jusqu'au changement suivant, même le lendemain : un jour vide prolonge le dernier profil de la veille.\n\nProfils : {profiles}\n\n{problems}",
+        "data": {
+          "mon": "Lundi",
+          "tue": "Mardi",
+          "wed": "Mercredi",
+          "thu": "Jeudi",
+          "fri": "Vendredi",
+          "sat": "Samedi",
+          "sun": "Dimanche",
+          "copy_monday_to": "Recopier le lundi sur"
+        }
+      }
+    },
+    "error": {
+      "name_required": "Le nom est obligatoire.",
+      "name_taken": "Ce nom est déjà utilisé.",
+      "climates_required": "Choisissez au moins un split.",
+      "profile_in_use": "Profil utilisé dans un programme : {used}. Retirez-le des programmes avant de le supprimer.",
+      "keep_one_profile": "Il faut garder au moins un profil.",
+      "keep_one_planning": "Il faut garder au moins un planning.",
+      "invalid_program": "Saisie invalide (détail ci-dessus)."
+    }
+  },
+  "selector": {
+    "hvac_mode": {
+      "options": {
+        "off": "Arrêt",
+        "heat": "Chauffage",
+        "cool": "Climatisation",
+        "heat_cool": "Chaud / froid",
+        "auto": "Automatique",
+        "dry": "Déshumidification",
+        "fan_only": "Ventilation seule"
+      }
+    },
+    "weekday": {
+      "options": {
+        "mon": "Lundi",
+        "tue": "Mardi",
+        "wed": "Mercredi",
+        "thu": "Jeudi",
+        "fri": "Vendredi",
+        "sat": "Samedi",
+        "sun": "Dimanche"
+      }
+    }
+  },
+  "entity": {
+    "select": {
+      "profile": { "name": "Profil" },
+      "planning": { "name": "Planning" },
+      "global_planning": { "name": "Planning de tous les groupes" }
+    },
+    "switch": {
+      "programming": { "name": "Programmation" }
+    },
+    "button": {
+      "resume": { "name": "Reprendre la programmation" }
+    },
+    "sensor": {
+      "status": {
+        "name": "Statut",
+        "state": {
+          "scheduled": "Programmé",
+          "override": "Dérogation",
+          "disabled": "Programmation désactivée",
+          "no_program": "Aucun programme"
+        }
+      },
+      "next_change": { "name": "Prochain changement" }
+    }
+  }
+}

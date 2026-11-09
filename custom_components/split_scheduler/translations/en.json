@@ -1,0 +1,243 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Split scheduler",
+        "description": "Default profiles (Frost protection, Eco, Comfort, Boost…) and plannings (Normal, Holidays, Long absence) are created. Then create your split groups and their programs with the integration's **Configure** button."
+      }
+    },
+    "abort": {
+      "already_configured": "Already configured.",
+      "single_instance_allowed": "Already configured."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Split scheduler",
+        "description": "Choose what to edit. **Remember to “Save and close”**, otherwise changes are lost.",
+        "menu_options": {
+          "groups": "Split groups",
+          "profiles": "Operating profiles",
+          "plannings": "Planning types",
+          "program_pick": "Weekly program of a group",
+          "save": "Save and close"
+        }
+      },
+      "groups": {
+        "title": "Split groups",
+        "menu_options": {
+          "group_add": "Add a group",
+          "group_edit_pick": "Edit a group",
+          "group_delete": "Delete groups",
+          "init": "Back"
+        }
+      },
+      "group_add": {
+        "title": "New group",
+        "data": {
+          "name": "Name",
+          "climates": "Splits (thermostats)"
+        }
+      },
+      "group_edit_pick": {
+        "title": "Edit a group",
+        "data": {
+          "group": "Group"
+        }
+      },
+      "group_edit": {
+        "title": "Edit group",
+        "data": {
+          "name": "Name",
+          "climates": "Splits (thermostats)"
+        }
+      },
+      "group_delete": {
+        "title": "Delete groups",
+        "description": "Programs of these groups are deleted too.",
+        "data": {
+          "groups": "Groups to delete"
+        }
+      },
+      "profiles": {
+        "title": "Operating profiles",
+        "menu_options": {
+          "profile_add": "Add a profile",
+          "profile_edit_pick": "Edit a profile",
+          "profile_delete": "Delete profiles",
+          "init": "Back"
+        }
+      },
+      "profile_add": {
+        "title": "New profile",
+        "description": "Empty fields are left unchanged on the splits. A profile without any setting (“Manual”) changes nothing.",
+        "data": {
+          "name": "Name",
+          "hvac_mode": "Mode",
+          "temperature": "Target temperature",
+          "fan_mode": "Fan speed",
+          "swing_mode": "Swing (vertical)",
+          "swing_horizontal_mode": "Horizontal swing"
+        },
+        "data_description": {
+          "fan_mode": "Values offered by your splits; you can also type one.",
+          "temperature": "Ignored in Off and Fan only modes."
+        }
+      },
+      "profile_edit_pick": {
+        "title": "Edit a profile",
+        "data": {
+          "profile": "Profile"
+        }
+      },
+      "profile_edit": {
+        "title": "Edit profile",
+        "description": "Empty fields are left unchanged on the splits. A profile without any setting (“Manual”) changes nothing.",
+        "data": {
+          "name": "Name",
+          "hvac_mode": "Mode",
+          "temperature": "Target temperature",
+          "fan_mode": "Fan speed",
+          "swing_mode": "Swing (vertical)",
+          "swing_horizontal_mode": "Horizontal swing"
+        },
+        "data_description": {
+          "fan_mode": "Values offered by your splits; you can also type one.",
+          "temperature": "Ignored in Off and Fan only modes."
+        }
+      },
+      "profile_delete": {
+        "title": "Delete profiles",
+        "data": {
+          "profiles": "Profiles to delete"
+        }
+      },
+      "plannings": {
+        "title": "Planning types",
+        "menu_options": {
+          "planning_add": "Add a planning",
+          "planning_edit_pick": "Rename a planning",
+          "planning_delete": "Delete plannings",
+          "init": "Back"
+        }
+      },
+      "planning_add": {
+        "title": "New planning",
+        "data": {
+          "name": "Name",
+          "copy_from": "Copy programs from"
+        }
+      },
+      "planning_edit_pick": {
+        "title": "Rename a planning",
+        "data": {
+          "planning": "Planning"
+        }
+      },
+      "planning_edit": {
+        "title": "Rename planning",
+        "data": {
+          "name": "Name"
+        }
+      },
+      "planning_delete": {
+        "title": "Delete plannings",
+        "data": {
+          "plannings": "Plannings to delete"
+        }
+      },
+      "program_pick": {
+        "title": "Weekly program",
+        "data": {
+          "planning": "Planning",
+          "group": "Group"
+        }
+      },
+      "program_edit": {
+        "title": "{group} — planning {planning}",
+        "description": "For each day, enter profile changes like `06:30 Comfort, 08:30 Eco, 22:30 Eco`. A profile stays active until the next change, even on the following day: an empty day keeps the previous profile.\n\nProfiles: {profiles}\n\n{problems}",
+        "data": {
+          "mon": "Monday",
+          "tue": "Tuesday",
+          "wed": "Wednesday",
+          "thu": "Thursday",
+          "fri": "Friday",
+          "sat": "Saturday",
+          "sun": "Sunday",
+          "copy_monday_to": "Copy Monday to"
+        }
+      }
+    },
+    "error": {
+      "name_required": "Name is required.",
+      "name_taken": "This name is already used.",
+      "climates_required": "Pick at least one split.",
+      "profile_in_use": "Profile used in a program: {used}. Remove it from programs first.",
+      "keep_one_profile": "Keep at least one profile.",
+      "keep_one_planning": "Keep at least one planning.",
+      "invalid_program": "Invalid input (details above)."
+    }
+  },
+  "selector": {
+    "hvac_mode": {
+      "options": {
+        "off": "Off",
+        "heat": "Heat",
+        "cool": "Cool",
+        "heat_cool": "Heat/Cool",
+        "auto": "Auto",
+        "dry": "Dry",
+        "fan_only": "Fan only"
+      }
+    },
+    "weekday": {
+      "options": {
+        "mon": "Monday",
+        "tue": "Tuesday",
+        "wed": "Wednesday",
+        "thu": "Thursday",
+        "fri": "Friday",
+        "sat": "Saturday",
+        "sun": "Sunday"
+      }
+    }
+  },
+  "entity": {
+    "select": {
+      "profile": {
+        "name": "Profile"
+      },
+      "planning": {
+        "name": "Planning"
+      },
+      "global_planning": {
+        "name": "Planning of all groups"
+      }
+    },
+    "switch": {
+      "programming": {
+        "name": "Scheduling"
+      }
+    },
+    "button": {
+      "resume": {
+        "name": "Resume schedule"
+      }
+    },
+    "sensor": {
+      "status": {
+        "name": "Status",
+        "state": {
+          "scheduled": "Scheduled",
+          "override": "Override",
+          "disabled": "Scheduling disabled",
+          "no_program": "No program"
+        }
+      },
+      "next_change": {
+        "name": "Next change"
+      }
+    }
+  }
+}

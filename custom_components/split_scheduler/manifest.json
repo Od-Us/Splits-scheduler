@@ -1,0 +1,13 @@
+{
+  "domain": "split_scheduler",
+  "name": "Programmation des splits",
+  "codeowners": [],
+  "config_flow": true,
+  "dependencies": [],
+  "documentation": "https://github.com/Od-Us/Splits-scheduler",
+  "integration_type": "service",
+  "iot_class": "calculated",
+  "requirements": [],
+  "single_config_entry": true,
+  "version": "1.0.0"
+}
