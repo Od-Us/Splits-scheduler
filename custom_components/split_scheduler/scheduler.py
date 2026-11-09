@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import datetime
 import logging
@@ -323,11 +323,15 @@ class SplitScheduler:
             and mode != "fan_only"
             and features & ClimateEntityFeature.TARGET_TEMPERATURE
         ):
-            low, high = attrs.get("min_temp"), attrs.get("max_temp")
-            if low is not None:
-                temperature = max(temperature, low)
-            if high is not None:
-                temperature = min(temperature, high)
+            wanted = temperature
+            temperature = target_temperature(attrs, temperature)
+            if temperature != wanted:
+                _LOGGER.info(
+                    "%s : consigne %s °C ramenée à %s °C (limites et pas du split)",
+                    entity_id,
+                    wanted,
+                    temperature,
+                )
             if attrs.get("temperature") != temperature:
                 await call("set_temperature", temperature=temperature)
 
@@ -397,8 +401,7 @@ def _deviates(state: State, profile: dict) -> bool:
         temperature is not None
         and current is not None
         and state.state != "fan_only"
-        and abs(float(current) - temperature) > TEMPERATURE_TOLERANCE
-        and not _clamped(attrs, temperature, float(current))
+        and abs(float(current) - target_temperature(attrs, temperature)) > TEMPERATURE_TOLERANCE
     ):
         return True
     for setting, attr, choices, _ in _MODE_SETTINGS:
@@ -408,9 +411,18 @@ def _deviates(state: State, profile: dict) -> bool:
     return False
 
 
-def _clamped(attrs: dict, wanted: float, current: float) -> bool:
-    """La consigne a été bornée par les limites du split (ex. hors gel à 10 °C)."""
+def target_temperature(attrs: Mapping[str, Any], wanted: float) -> float:
+    """Consigne réellement acceptée par le split : arrondie à son pas, bornée.
+
+    Ex. Faikout en S21 : pas de 0,5 °C, 16 à 32 °C ; un hors-gel à 10 °C
+    devient 16 °C.
+    """
+    step = attrs.get("target_temp_step")
+    if step:
+        wanted = round(round(wanted / float(step)) * float(step), 2)
     low, high = attrs.get("min_temp"), attrs.get("max_temp")
-    return (low is not None and wanted < low and current == low) or (
-        high is not None and wanted > high and current == high
-    )
+    if low is not None:
+        wanted = max(wanted, float(low))
+    if high is not None:
+        wanted = min(wanted, float(high))
+    return wanted

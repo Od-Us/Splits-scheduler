@@ -71,7 +71,7 @@
       },
       "profile_add": {
         "title": "New profile",
-        "description": "Empty fields are left unchanged on the splits. A profile without any setting (“Manual”) changes nothing.",
+        "description": "Empty fields are left unchanged on the splits. A profile without any setting (“Manual”) changes nothing. Target accepted by your splits: {limits} (out-of-range values are brought into range).",
         "data": {
           "name": "Name",
           "hvac_mode": "Mode",
@@ -93,7 +93,7 @@
       },
       "profile_edit": {
         "title": "Edit profile",
-        "description": "Empty fields are left unchanged on the splits. A profile without any setting (“Manual”) changes nothing.",
+        "description": "Empty fields are left unchanged on the splits. A profile without any setting (“Manual”) changes nothing. Target accepted by your splits: {limits} (out-of-range values are brought into range).",
         "data": {
           "name": "Name",
           "hvac_mode": "Mode",

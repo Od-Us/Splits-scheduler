@@ -35,20 +35,30 @@
       },
       "group_add": {
         "title": "Nouveau groupe",
-        "data": { "name": "Nom", "climates": "Splits (thermostats)" }
+        "data": {
+          "name": "Nom",
+          "climates": "Splits (thermostats)"
+        }
       },
       "group_edit_pick": {
         "title": "Modifier un groupe",
-        "data": { "group": "Groupe" }
+        "data": {
+          "group": "Groupe"
+        }
       },
       "group_edit": {
         "title": "Modifier le groupe",
-        "data": { "name": "Nom", "climates": "Splits (thermostats)" }
+        "data": {
+          "name": "Nom",
+          "climates": "Splits (thermostats)"
+        }
       },
       "group_delete": {
         "title": "Supprimer des groupes",
         "description": "Les programmes de ces groupes seront aussi supprimés.",
-        "data": { "groups": "Groupes à supprimer" }
+        "data": {
+          "groups": "Groupes à supprimer"
+        }
       },
       "profiles": {
         "title": "Profils de fonctionnement",
@@ -61,7 +71,7 @@
       },
       "profile_add": {
         "title": "Nouveau profil",
-        "description": "Un champ laissé vide n'est pas modifié sur les splits. Un profil sans aucun réglage (« Manuel ») ne change rien : il marque seulement le créneau.",
+        "description": "Un champ laissé vide n'est pas modifié sur les splits. Un profil sans aucun réglage (« Manuel ») ne change rien : il marque seulement le créneau. Consigne acceptée par vos splits : {limits} (une valeur hors plage est ramenée dans la plage).",
         "data": {
           "name": "Nom",
           "hvac_mode": "Mode",
@@ -77,11 +87,13 @@
       },
       "profile_edit_pick": {
         "title": "Modifier un profil",
-        "data": { "profile": "Profil" }
+        "data": {
+          "profile": "Profil"
+        }
       },
       "profile_edit": {
         "title": "Modifier le profil",
-        "description": "Un champ laissé vide n'est pas modifié sur les splits. Un profil sans aucun réglage (« Manuel ») ne change rien : il marque seulement le créneau.",
+        "description": "Un champ laissé vide n'est pas modifié sur les splits. Un profil sans aucun réglage (« Manuel ») ne change rien : il marque seulement le créneau. Consigne acceptée par vos splits : {limits} (une valeur hors plage est ramenée dans la plage).",
         "data": {
           "name": "Nom",
           "hvac_mode": "Mode",
@@ -97,7 +109,9 @@
       },
       "profile_delete": {
         "title": "Supprimer des profils",
-        "data": { "profiles": "Profils à supprimer" }
+        "data": {
+          "profiles": "Profils à supprimer"
+        }
       },
       "plannings": {
         "title": "Types de planning",
@@ -110,23 +124,35 @@
       },
       "planning_add": {
         "title": "Nouveau planning",
-        "data": { "name": "Nom", "copy_from": "Copier les programmes de" }
+        "data": {
+          "name": "Nom",
+          "copy_from": "Copier les programmes de"
+        }
       },
       "planning_edit_pick": {
         "title": "Renommer un planning",
-        "data": { "planning": "Planning" }
+        "data": {
+          "planning": "Planning"
+        }
       },
       "planning_edit": {
         "title": "Renommer le planning",
-        "data": { "name": "Nom" }
+        "data": {
+          "name": "Nom"
+        }
       },
       "planning_delete": {
         "title": "Supprimer des plannings",
-        "data": { "plannings": "Plannings à supprimer" }
+        "data": {
+          "plannings": "Plannings à supprimer"
+        }
       },
       "program_pick": {
         "title": "Programme hebdomadaire",
-        "data": { "planning": "Planning", "group": "Groupe" }
+        "data": {
+          "planning": "Planning",
+          "group": "Groupe"
+        }
       },
       "program_edit": {
         "title": "{group} — planning {planning}",
@@ -179,15 +205,25 @@
   },
   "entity": {
     "select": {
-      "profile": { "name": "Profil" },
-      "planning": { "name": "Planning" },
-      "global_planning": { "name": "Planning de tous les groupes" }
+      "profile": {
+        "name": "Profil"
+      },
+      "planning": {
+        "name": "Planning"
+      },
+      "global_planning": {
+        "name": "Planning de tous les groupes"
+      }
     },
     "switch": {
-      "programming": { "name": "Programmation" }
+      "programming": {
+        "name": "Programmation"
+      }
     },
     "button": {
-      "resume": { "name": "Reprendre la programmation" }
+      "resume": {
+        "name": "Reprendre la programmation"
+      }
     },
     "sensor": {
       "status": {
@@ -199,7 +235,9 @@
           "no_program": "Aucun programme"
         }
       },
-      "next_change": { "name": "Prochain changement" }
+      "next_change": {
+        "name": "Prochain changement"
+      }
     }
   }
 }

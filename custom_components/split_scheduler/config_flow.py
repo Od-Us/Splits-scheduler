@@ -229,15 +229,17 @@ class SplitSchedulerOptionsFlow(OptionsFlow):
     ) -> ConfigFlowResult:
         return await self._async_profile_form("profile_edit", user_input, self._edit_id)
 
-    def _known_modes(self, list_attr: str) -> list[str]:
-        """Valeurs proposées par les thermostats des groupes (ou de toute la maison)."""
+    def _climate_states(self) -> list:
+        """États des thermostats des groupes (ou de toute la maison s'il n'y en a pas)."""
         climates = {eid for g in self.opts[CONF_GROUPS].values() for eid in g[CONF_CLIMATES]}
-        states = [self.hass.states.get(eid) for eid in climates] or self.hass.states.async_all(
-            "climate"
-        )
+        states = [self.hass.states.get(eid) for eid in sorted(climates)]
+        return [st for st in states if st] or self.hass.states.async_all("climate")
+
+    def _known_modes(self, list_attr: str) -> list[str]:
+        """Valeurs annoncées par les thermostats (ex. fan_modes de Faikout)."""
         found: list[str] = []
-        for state in states:
-            for value in (state.attributes.get(list_attr) or []) if state else []:
+        for state in self._climate_states():
+            for value in state.attributes.get(list_attr) or []:
                 if value not in found:
                     found.append(str(value))
         return found
@@ -265,11 +267,14 @@ class SplitSchedulerOptionsFlow(OptionsFlow):
                 return await self.async_step_profiles()
             values = user_input
 
+        # Seuls les modes annoncés par les splits (Faikout : pas de « auto »)
+        known = self._known_modes("hvac_modes")
+        hvac_modes = [m for m in HVAC_MODES if m in known or m == values.get(ATTR_HVAC_MODE)]
         fields: dict[Any, Any] = {
             vol.Required("name"): TextSelector(),
             vol.Optional(ATTR_HVAC_MODE): SelectSelector(
                 SelectSelectorConfig(
-                    options=HVAC_MODES,
+                    options=hvac_modes if known else HVAC_MODES,
                     translation_key="hvac_mode",
                     mode=SelectSelectorMode.DROPDOWN,
                 )
@@ -289,7 +294,29 @@ class SplitSchedulerOptionsFlow(OptionsFlow):
                 )
             )
         schema = self.add_suggested_values_to_schema(vol.Schema(fields), values)
-        return self.async_show_form(step_id=step_id, data_schema=schema, errors=errors)
+        return self.async_show_form(
+            step_id=step_id,
+            data_schema=schema,
+            errors=errors,
+            description_placeholders={"limits": self._temperature_limits()},
+        )
+
+    def _temperature_limits(self) -> str:
+        """Plage de consigne acceptée par tous les splits, ex. « 16 à 32 °C, pas de 0.5 °C »."""
+        lows, highs, steps = [], [], set()
+        for state in self._climate_states():
+            attrs = state.attributes
+            if attrs.get("min_temp") is not None and attrs.get("max_temp") is not None:
+                lows.append(float(attrs["min_temp"]))
+                highs.append(float(attrs["max_temp"]))
+            if attrs.get("target_temp_step"):
+                steps.add(float(attrs["target_temp_step"]))
+        if not lows:
+            return "?"
+        text = f"{max(lows):g} à {min(highs):g} °C"
+        if steps:
+            text += f", pas de {max(steps):g} °C"
+        return text
 
     async def async_step_profile_delete(
         self, user_input: dict[str, Any] | None = None

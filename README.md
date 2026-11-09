@@ -113,7 +113,8 @@ création des entités ; ils se retrouvent dans la page de l'appareil.
   dès que le split redevient disponible.
 - **Commandes envoyées** : seules les valeurs qui diffèrent de l'état actuel sont
   envoyées. La consigne est bornée aux limites du split : un hors-gel à 8 °C
-  devient 10 °C si le split ne descend pas plus bas. Une valeur que le split ne
+  devient 16 °C sur un Faikout S21. La consigne est aussi arrondie au pas du
+  split (0,5 °C). Une valeur que le split ne
   gère pas est ignorée et signalée dans le journal.
 
 ## Exemples d'automatisations
@@ -176,6 +177,23 @@ entities:
   - switch.salon_programmation
   - button.salon_reprendre_la_programmation
 ```
+
+## Splits Faikout (MQTT)
+
+Vérifié avec les attributs d'un Faikout en port **S21** et
+d'après le code source de Faikout (découverte MQTT de Home Assistant).
+
+| Réglage | Valeurs Faikout | Remarque |
+|---|---|---|
+| Mode | `heat_cool`, `off`, `cool`, `heat`, `dry`, `fan_only` | Pas de `auto` : choisir « Chaud / froid » (`heat_cool`). Le formulaire ne propose que les modes annoncés. |
+| Consigne | 16 à 32 °C, pas de 0,5 °C | **Le profil « Hors gel » (10 °C) est ramené à 16 °C**, comme « Eco absence ». Pour un vrai hors-gel plus bas, il n'y a pas d'autre moyen que le mode Arrêt. |
+| Ventilateur | `auto`, `night`, `low`, `lowMedium`, `medium`, `mediumHigh`, `high` | Proposés tels quels dans le formulaire. |
+| Oscillation | `off`, `H`, `V`, `H+V` | Une seule valeur pour les deux axes : laisser vide « Oscillation horizontale ». |
+| Préréglage | `none`, `boost`, `home` | Jamais modifié par l'intégration : le split reste sur `home`. |
+
+**Désactiver l'option « Auto » (`autoe`) de Faikout** sur les splits programmés :
+sinon le module change lui-même de mode et de consigne, et l'intégration
+prend ces changements pour des réglages manuels.
 
 ## Astuce : été / hiver
 
