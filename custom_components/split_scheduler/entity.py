@@ -40,7 +40,6 @@ class GroupEntity(SchedulerEntity):
             identifiers={(DOMAIN, f"{entry_id}_{group_id}")},
             name=scheduler.groups[group_id]["name"],
             model="Groupe de splits",
-            via_device=(DOMAIN, entry_id),
         )
 
     @property

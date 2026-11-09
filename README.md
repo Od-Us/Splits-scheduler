@@ -25,7 +25,8 @@ Tout se configure depuis l'interface de Home Assistant, sans YAML.
 3. *Paramètres → Appareils et services → Ajouter une intégration →
    « Programmation des splits »*.
 
-Home Assistant 2024.12 ou plus récent est nécessaire.
+Home Assistant 2024.12 ou plus récent est nécessaire. Vérifié sur Home Assistant OS
+avec Core **2026.11.0** (Python 3.14).
 
 À l'installation, des profils et des plannings sont créés d'office ; ils sont
 tous modifiables ou supprimables :
@@ -185,8 +186,15 @@ sélecteur de planning global.
 
 ## Tests
 
+Python 3.14 est nécessaire (comme Home Assistant 2026.x) :
+
 ```bash
 cd home_assistant
 pip install pytest-homeassistant-custom-component
 pytest
 ```
+
+`pytest-homeassistant-custom-component` suit Home Assistant avec un peu de
+retard. Sa version 0.13.375 embarque Core 2026.10.4 et ne fonctionne pas encore
+avec Core 2026.11 : la compatibilité 2026.11.0 a donc été vérifiée sur un vrai
+serveur Home Assistant.
