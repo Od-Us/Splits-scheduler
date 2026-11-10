@@ -259,3 +259,9 @@ pytest
 retard. Sa version 0.13.375 embarque Core 2026.10.4 et ne fonctionne pas encore
 avec Core 2026.11 : la compatibilité 2026.11.0 a donc été vérifiée sur un vrai
 serveur Home Assistant.
+
+## Licence
+
+Distribuée sous licence [MIT](LICENSE) : libre d'utilisation, de modification et
+de redistribution, y compris à des fins commerciales, en conservant la mention de
+copyright.
