@@ -40,6 +40,9 @@ from .const import (
     ATTR_TEMPERATURE,
     CONF_CLIMATES,
     CONF_COMPRESSOR,
+    CONF_OUTDOOR,
+    CONF_SETTINGS,
+    ATTR_OUTDOOR_DELTA,
     CONF_GROUPS,
     CONF_PLANNINGS,
     CONF_PROFILES,
@@ -56,6 +59,7 @@ from .const import (
     lang_of,
 )
 from .planning import ProgramError, format_day, normalize, parse_day, profiles_used
+from .scheduler import detect_outdoor_sensor
 
 # Réglage du profil -> attribut des thermostats listant les valeurs possibles
 _MODE_LISTS = {
@@ -129,11 +133,32 @@ class SplitSchedulerOptionsFlow(OptionsFlow):
     # ------------------------------------------------------------------ menu principal
 
     async def async_step_init(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
-        menu = ["groups", "profiles", "plannings"]
+        menu = ["groups", "profiles", "plannings", "settings"]
         if self.opts[CONF_GROUPS] and self.opts[CONF_PLANNINGS]:
             menu.append("program_pick")
         menu.append("save")
         return self.async_show_menu(step_id="init", menu_options=menu)
+
+    async def async_step_settings(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Réglages généraux : capteur de température extérieure (commun à tous les groupes)."""
+        settings = self.opts.setdefault(CONF_SETTINGS, {})
+        if user_input is not None:
+            if user_input.get(CONF_OUTDOOR):
+                settings[CONF_OUTDOOR] = user_input[CONF_OUTDOOR]
+            else:
+                settings.pop(CONF_OUTDOOR, None)  # vide : détection automatique
+            return await self.async_step_init()
+        climates = [eid for g in self.opts[CONF_GROUPS].values() for eid in g[CONF_CLIMATES]]
+        suggested = settings.get(CONF_OUTDOOR) or detect_outdoor_sensor(self.hass, climates)
+        schema = self.add_suggested_values_to_schema(
+            vol.Schema(
+                {vol.Optional(CONF_OUTDOOR): EntitySelector(EntitySelectorConfig(domain="sensor"))}
+            ),
+            {CONF_OUTDOOR: suggested},
+        )
+        return self.async_show_form(step_id="settings", data_schema=schema)
 
     async def async_step_save(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         return self.async_create_entry(data=with_positions(self.opts))
@@ -296,6 +321,8 @@ class SplitSchedulerOptionsFlow(OptionsFlow):
                         profile[setting] = (
                             float(value) if setting == ATTR_TEMPERATURE else str(value)
                         )
+                if user_input.get(ATTR_OUTDOOR_DELTA) not in (None, ""):
+                    profile[ATTR_OUTDOOR_DELTA] = float(user_input[ATTR_OUTDOOR_DELTA])
                 self.opts[CONF_PROFILES][profile_id or _new_id()] = profile
                 return await self.async_step_profiles()
             values = user_input
@@ -318,6 +345,11 @@ class SplitSchedulerOptionsFlow(OptionsFlow):
                 )
             ),
         }
+        fields[vol.Optional(ATTR_OUTDOOR_DELTA)] = NumberSelector(
+            NumberSelectorConfig(
+                min=1, max=30, step=0.5, mode=NumberSelectorMode.BOX, unit_of_measurement="°C"
+            )
+        )
         for setting, list_attr in _MODE_LISTS.items():
             fields[vol.Optional(setting)] = SelectSelector(
                 SelectSelectorConfig(

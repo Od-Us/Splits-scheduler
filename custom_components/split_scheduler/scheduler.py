@@ -31,6 +31,9 @@ from .const import (
     ATTR_TEMPERATURE,
     CONF_CLIMATES,
     CONF_COMPRESSOR,
+    CONF_OUTDOOR,
+    CONF_SETTINGS,
+    ATTR_OUTDOOR_DELTA,
     CONF_GROUPS,
     CONF_PLANNINGS,
     CONF_PROFILES,
@@ -46,6 +49,14 @@ from .const import (
     ordered,
 )
 from .compressor import Average, StartLog
+from .outdoor import (
+    MIN_INTERVAL,
+    QUIET_BEFORE_CHANGE,
+    THRESHOLD,
+    OutdoorAverage,
+    adapt_target,
+    round_half,
+)
 from .planning import Program, current_occurrence, next_occurrence
 
 _LOGGER = logging.getLogger(__name__)
@@ -81,6 +92,11 @@ class GroupState:
     has_program: bool = False
     profile_changed_at: datetime | None = None
     compressor: StartLog | None = None
+    # Consigne réellement demandée (adaptée à l'extérieur) et date du dernier envoi
+    effective_target: float | None = None
+    target_changed_at: datetime | None = None
+    # Réglage fait à la main (carte, télécommande) : plus d'adaptation jusqu'au créneau suivant
+    hand_set: bool = False
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -93,6 +109,11 @@ class GroupState:
                 self.profile_changed_at.isoformat() if self.profile_changed_at else None
             ),
             "compressor": self.compressor.as_dict() if self.compressor else None,
+            "effective_target": self.effective_target,
+            "target_changed_at": (
+                self.target_changed_at.isoformat() if self.target_changed_at else None
+            ),
+            "hand_set": self.hand_set,
         }
 
 
@@ -113,6 +134,8 @@ class SplitScheduler:
         self._timers: dict[str, CALLBACK_TYPE] = {}
         self._pending: dict[str, tuple[str, str]] = {}  # entity_id -> (groupe, profil)
         self._listeners: list[Callable[[], None]] = []
+        self.outdoor_entity: str | None = options.get(CONF_SETTINGS, {}).get(CONF_OUTDOOR)
+        self.outdoor = OutdoorAverage()
         self._unsubs: list[CALLBACK_TYPE] = []
 
     # ------------------------------------------------------------------ cycle de vie
@@ -134,6 +157,9 @@ class SplitScheduler:
                 override=data.get("override", False),
                 last_slot_key=data.get("last_slot_key"),
                 profile_changed_at=_parse(data.get("profile_changed_at")),
+                effective_target=data.get("effective_target"),
+                target_changed_at=_parse(data.get("target_changed_at")),
+                hand_set=data.get("hand_set", False),
             )
             if self.groups[gid].get(CONF_COMPRESSOR):
                 stored_log = data.get("compressor")
@@ -169,9 +195,21 @@ class SplitScheduler:
                     self.hass, list(compressors), self._on_compressor_change
                 )
             )
-            # Les moyennes évoluent avec le temps : mise à jour chaque minute.
+        if self.outdoor_entity is None:
+            self.outdoor_entity = detect_outdoor_sensor(
+                self.hass, [eid for g in self.groups.values() for eid in g[CONF_CLIMATES]]
+            )
+        if self.outdoor_entity:
+            await self._async_backfill_outdoor()
             self._unsubs.append(
-                async_track_time_interval(self.hass, self._tick, timedelta(minutes=1))
+                async_track_state_change_event(
+                    self.hass, [self.outdoor_entity], self._on_outdoor_change
+                )
+            )
+        if compressors or self.outdoor_entity:
+            # Moyennes et adaptation à l'extérieur : réexamen chaque minute.
+            self._unsubs.append(
+                async_track_time_interval(self.hass, self._async_tick, timedelta(minutes=1))
             )
         for gid in self.groups:
             await self.async_refresh_group(gid)
@@ -218,9 +256,130 @@ class SplitScheduler:
         for update in list(self._listeners):
             update()
 
-    @callback
-    def _tick(self, _now: datetime) -> None:
+    async def _async_tick(self, _now: datetime) -> None:
+        for gid in self.groups:
+            await self._async_adapt(gid)
         self._notify()
+
+    # ------------------------------------------------------------------ température extérieure
+
+    @callback
+    def _on_outdoor_change(self, event: Event[EventStateChangedData]) -> None:
+        new = event.data["new_state"]
+        if new is not None:
+            self.outdoor.add(new.last_updated, new.state)
+            self.outdoor.prune(dt_util.utcnow())
+
+    async def _async_backfill_outdoor(self) -> None:
+        """Dernière heure de température extérieure, depuis l'historique si possible."""
+        assert self.outdoor_entity is not None
+        now = dt_util.utcnow()
+        if "recorder" in self.hass.config.components:
+            from homeassistant.components.recorder import history
+            from homeassistant.helpers.recorder import get_instance
+
+            try:
+                changes = await get_instance(self.hass).async_add_executor_job(
+                    history.state_changes_during_period,
+                    self.hass,
+                    now - self.outdoor.window,
+                    now,
+                    self.outdoor_entity,
+                    True,
+                )
+            except Exception as err:  # noqa: BLE001 - l'historique est un plus
+                _LOGGER.debug("Historique extérieur indisponible : %s", err)
+                changes = {}
+            for past in changes.get(self.outdoor_entity, []):
+                self.outdoor.add(past.last_updated, past.state)
+        if not self.outdoor.samples and (current := self.hass.states.get(self.outdoor_entity)):
+            self.outdoor.add(current.last_updated, current.state)
+
+    def outdoor_mean(self) -> float | None:
+        return self.outdoor.mean(dt_util.utcnow()) if self.outdoor_entity else None
+
+    def _group_mode(self, gid: str, profile: dict) -> str | None:
+        if (mode := profile.get(ATTR_HVAC_MODE)) is not None:
+            return mode
+        first = self.hass.states.get(self.groups[gid][CONF_CLIMATES][0])
+        return first.state if first is not None else None
+
+    def _target_for(self, gid: str, profile: dict) -> float | None:
+        """Consigne du profil, adaptée à l'extérieur si le profil le prévoit."""
+        target = profile.get(ATTR_TEMPERATURE)
+        adapted = adapt_target(
+            target, self._group_mode(gid, profile), profile.get(ATTR_OUTDOOR_DELTA), self.outdoor_mean()
+        )
+        return round_half(adapted) if adapted is not None else None
+
+    def _settings_for(self, gid: str, profile_id: str) -> dict:
+        """Réglages à envoyer aux splits : ceux du profil, consigne éventuellement adaptée."""
+        settings = dict(self.profiles.get(profile_id, {}))
+        state = self.states[gid]
+        if settings.get(ATTR_TEMPERATURE) is not None and state.effective_target is not None:
+            settings[ATTR_TEMPERATURE] = state.effective_target
+        return settings
+
+    def adaptation(self, gid: str) -> dict[str, Any]:
+        """Informations d'adaptation pour l'affichage."""
+        state = self.states[gid]
+        profile = self.profiles.get(state.active_profile_id or "", {})
+        target, delta = profile.get(ATTR_TEMPERATURE), profile.get(ATTR_OUTDOOR_DELTA)
+        effective = state.effective_target
+        return {
+            "consigne_profil": target,
+            "consigne_appliquee": effective if effective is not None else target,
+            "ecart_max_exterieur": delta,
+            "temperature_exterieure": self.outdoor_mean(),
+            "adaptation_exterieure": bool(
+                delta is not None and target is not None and effective is not None
+                and abs(effective - round_half(target)) >= THRESHOLD and not state.hand_set
+            ),
+        }
+
+    async def _async_adapt(self, gid: str) -> None:
+        """Réadapte la consigne si l'extérieur a assez changé (règles de réactivité)."""
+        state = self.states[gid]
+        profile = self.profiles.get(state.active_profile_id or "")
+        if (
+            profile is None
+            or profile.get(ATTR_OUTDOOR_DELTA) is None
+            or profile.get(ATTR_TEMPERATURE) is None
+            or not state.enabled
+            or state.hand_set
+        ):
+            return
+        now = dt_util.utcnow()
+        wanted = self._target_for(gid, profile)
+        current = state.effective_target
+        if current is None:  # profil appliqué par une version antérieure
+            current = round_half(profile[ATTR_TEMPERATURE])
+        if wanted is None or abs(wanted - current) < THRESHOLD:
+            return
+        if state.target_changed_at is not None and now - state.target_changed_at < MIN_INTERVAL:
+            return
+        if state.next_change is not None and state.next_change - now < QUIET_BEFORE_CHANGE:
+            return
+        _LOGGER.info(
+            "Groupe « %s » : consigne %s °C -> %s °C (extérieur %s °C, écart max %s °C)",
+            self.groups[gid]["name"],
+            current,
+            wanted,
+            self.outdoor_mean(),
+            profile[ATTR_OUTDOOR_DELTA],
+        )
+        state.effective_target = wanted
+        state.target_changed_at = now
+        state.applied_at = now  # nos propres commandes : pas de fausse dérogation
+        for entity_id in self.groups[gid][CONF_CLIMATES]:
+            split = self.hass.states.get(entity_id)
+            if split is None or split.state in _NOT_READY:
+                continue
+            try:
+                await self._async_send(entity_id, split, {ATTR_TEMPERATURE: wanted})
+            except (HomeAssistantError, ValueError) as err:
+                _LOGGER.warning("Échec de l'adaptation de %s : %s", entity_id, err)
+        self._changed()
 
     # ------------------------------------------------------------------ compresseur
 
@@ -379,6 +538,7 @@ class SplitScheduler:
         state.applied_at = dt_util.utcnow()  # nos propres commandes : pas de détection
         if state.enabled and state.active_profile_id is not None:
             state.override = True
+            state.hand_set = True
         _LOGGER.info("Groupe « %s » : réglage manuel %s", self.groups[gid]["name"], settings)
         for entity_id in self.groups[gid][CONF_CLIMATES]:
             current = self.hass.states.get(entity_id)
@@ -402,7 +562,10 @@ class SplitScheduler:
             state.profile_changed_at = dt_util.utcnow()
         state.active_profile_id = profile_id
         state.override = manual
+        state.hand_set = False
         state.applied_at = dt_util.utcnow()
+        state.effective_target = self._target_for(gid, profile)
+        state.target_changed_at = state.applied_at
         _LOGGER.info(
             "Groupe « %s » : profil « %s »%s",
             self.groups[gid]["name"],
@@ -421,7 +584,7 @@ class SplitScheduler:
             return
         self._pending.pop(entity_id, None)
         try:
-            await self._async_send(entity_id, current, self.profiles[profile_id])
+            await self._async_send(entity_id, current, self._settings_for(gid, profile_id))
         except (HomeAssistantError, ValueError) as err:
             _LOGGER.warning("Échec de l'envoi du profil à %s : %s", entity_id, err)
 
@@ -503,7 +666,7 @@ class SplitScheduler:
                 or (state.applied_at is not None and now - state.applied_at < GRACE_PERIOD)
             ):
                 continue
-            profile = self.profiles.get(state.active_profile_id, {})
+            profile = self._settings_for(gid, state.active_profile_id)
             if _deviates(new, profile):
                 _LOGGER.info(
                     "Groupe « %s » : réglage manuel détecté sur %s, conservé "
@@ -512,6 +675,7 @@ class SplitScheduler:
                     entity_id,
                 )
                 state.override = True
+                state.hand_set = True
                 self._changed()
 
 
@@ -558,3 +722,25 @@ def target_temperature(attrs: Mapping[str, Any], wanted: float) -> float:
 
 def _parse(value: str | None) -> datetime | None:
     return dt_util.parse_datetime(value) if value else None
+
+
+def detect_outdoor_sensor(hass: HomeAssistant, climates: list[str]) -> str | None:
+    """Capteur de température extérieure du même appareil qu'un split (Faikout « Outside »)."""
+    from homeassistant.helpers import entity_registry as er
+
+    from .planning import normalize
+
+    registry = er.async_get(hass)
+    for climate in climates:
+        entry = registry.async_get(climate)
+        if entry is None or entry.device_id is None:
+            continue
+        for candidate in er.async_entries_for_device(registry, entry.device_id):
+            label = normalize(
+                f"{candidate.entity_id} {candidate.original_name or ''} {candidate.name or ''}"
+            )
+            if candidate.domain == "sensor" and any(
+                word in label for word in ("outside", "outdoor", "exterieur", "exterieure")
+            ):
+                return candidate.entity_id
+    return None

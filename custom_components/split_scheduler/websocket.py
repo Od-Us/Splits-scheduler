@@ -73,6 +73,7 @@ def ws_info(
         {
             "time_zone": hass.config.time_zone,
             "global_planning": entity("select", f"{entry_id}_global_planning"),
+            "outdoor": scheduler.outdoor_entity,
             "groups": [
                 {
                     "id": gid,

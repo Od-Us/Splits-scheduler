@@ -161,7 +161,10 @@ async def test_order_survives_sorted_storage(hass: HomeAssistant):
     # Ancienne entrée sans positions pour les profils : ordre des profils fournis
     for profile in options["profiles"].values():
         profile.pop("pos")
-    stored = {kind: dict(sorted(items.items())) for kind, items in options.items()}
+    stored = {
+        kind: dict(sorted(items.items())) if isinstance(items, dict) else items
+        for kind, items in options.items()
+    }
     entry = MockConfigEntry(domain=DOMAIN, options=stored)
     entry.add_to_hass(hass)
     assert await hass.config_entries.async_setup(entry.entry_id)
@@ -172,8 +175,8 @@ async def test_order_survives_sorted_storage(hass: HomeAssistant):
     ]
     assert hass.states.get("select.salon_planning").state == "Normal"
     assert hass.states.get("select.salon_profil").attributes["options"] == [
-        "Hors gel", "Eco", "Eco absence", "Confort", "Confort absence", "Boost", "Arrêt",
-        "Manuel", "Nuit",
+        "Hors gel", "Eco", "Eco absence", "Confort", "Confort absence", "Boost",
+        "Confort été", "Eco été", "Arrêt", "Manuel", "Nuit",
     ]
     scheduler = entry.runtime_data
     assert [g["name"] for g in scheduler.groups.values()] == ["Salon", "Bureau"]

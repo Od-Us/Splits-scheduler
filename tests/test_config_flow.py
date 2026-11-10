@@ -102,6 +102,6 @@ async def test_options_full_path(hass: HomeAssistant):
     assert program["1"] == program["4"] == program["0"]
     assert "2" not in program and program["5"] == [["09:00", "confort"]]
     nuit = entry.options["profiles"][nuit_id]
-    assert nuit == {"name": "Nuit", "hvac_mode": "heat", "temperature": 17.0, "fan_mode": "night", "pos": 8}
+    assert nuit == {"name": "Nuit", "hvac_mode": "heat", "temperature": 17.0, "fan_mode": "night", "pos": 10}
     # Rechargée avec les nouvelles entités
     assert hass.states.get("select.bureau_profile") is not None

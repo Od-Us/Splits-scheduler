@@ -49,6 +49,7 @@ class ProfileSelect(GroupEntity, SelectEntity):
             "profil_programme": self.scheduler.profile_name(state.scheduled_profile_id),
             "derogation": state.override,
             "splits": self.scheduler.groups[self.group_id]["climates"],
+            **self.scheduler.adaptation(self.group_id),
         }
 
     async def async_select_option(self, option: str) -> None:

@@ -21,7 +21,8 @@
           "profiles": "Operating profiles",
           "plannings": "Planning types",
           "program_pick": "Weekly program of a group",
-          "save": "Save and close"
+          "save": "Save and close",
+          "settings": "General settings"
         }
       },
       "groups": {
@@ -88,11 +89,13 @@
           "temperature": "Target temperature",
           "fan_mode": "Fan speed",
           "swing_mode": "Swing (vertical)",
-          "swing_horizontal_mode": "Horizontal swing"
+          "swing_horizontal_mode": "Horizontal swing",
+          "outdoor_max_delta": "Maximum gap to outdoor"
         },
         "data_description": {
           "fan_mode": "Values offered by your splits; you can also type one.",
-          "temperature": "Ignored in Off and Fan only modes."
+          "temperature": "Ignored in Off and Fan only modes.",
+          "outdoor_max_delta": "Cooling: the target never goes more than this gap below the outdoor temperature (1 h average); e.g. 26 °C with a 10 °C gap gives 29 °C when it is 39 °C outside. Heating: the target never goes more than this gap above it. Empty: no adaptation."
         }
       },
       "profile_edit_pick": {
@@ -110,11 +113,13 @@
           "temperature": "Target temperature",
           "fan_mode": "Fan speed",
           "swing_mode": "Swing (vertical)",
-          "swing_horizontal_mode": "Horizontal swing"
+          "swing_horizontal_mode": "Horizontal swing",
+          "outdoor_max_delta": "Maximum gap to outdoor"
         },
         "data_description": {
           "fan_mode": "Values offered by your splits; you can also type one.",
-          "temperature": "Ignored in Off and Fan only modes."
+          "temperature": "Ignored in Off and Fan only modes.",
+          "outdoor_max_delta": "Cooling: the target never goes more than this gap below the outdoor temperature (1 h average); e.g. 26 °C with a 10 °C gap gives 29 °C when it is 39 °C outside. Heating: the target never goes more than this gap above it. Empty: no adaptation."
         }
       },
       "profile_delete": {
@@ -232,6 +237,16 @@
         "data": {
           "source": "Day to copy",
           "days": "Copy to"
+        }
+      },
+      "settings": {
+        "title": "General settings",
+        "description": "The outdoor temperature is used by profiles with a **maximum gap to outdoor**, for all groups. It is averaged over 60 minutes; the adapted target is sent at most every 30 minutes, only if it changes by at least 0.5 °C, and never when a profile change is due within 30 minutes. Without a valid value for an hour, the profile target applies.",
+        "data": {
+          "outdoor_sensor": "Outdoor temperature sensor"
+        },
+        "data_description": {
+          "outdoor_sensor": "Empty: Faikout's “Outside” sensor (outdoor unit probe), detected automatically. It can be skewed while the unit runs, especially when cooling: a shaded sensor or weather station is more reliable."
         }
       }
     },

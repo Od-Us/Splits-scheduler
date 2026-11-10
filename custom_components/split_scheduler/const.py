@@ -23,6 +23,9 @@ CONF_PLANNINGS = "plannings"
 CONF_CLIMATES = "climates"
 CONF_PROGRAMS = "programs"
 CONF_COMPRESSOR = "compressor"
+CONF_SETTINGS = "settings"
+CONF_OUTDOOR = "outdoor_sensor"
+CONF_MIGRATIONS = "migrations"
 
 # Réglages possibles d'un profil (absents = « ne pas modifier »)
 ATTR_HVAC_MODE = "hvac_mode"
@@ -30,6 +33,8 @@ ATTR_TEMPERATURE = "temperature"
 ATTR_FAN_MODE = "fan_mode"
 ATTR_SWING_MODE = "swing_mode"
 ATTR_SWING_HORIZONTAL_MODE = "swing_horizontal_mode"
+# Écart maximal entre la consigne et la température extérieure (pas un réglage du split)
+ATTR_OUTDOOR_DELTA = "outdoor_max_delta"
 PROFILE_SETTINGS = (
     ATTR_HVAC_MODE,
     ATTR_TEMPERATURE,
@@ -61,6 +66,7 @@ STATUSES = [STATUS_SCHEDULED, STATUS_OVERRIDE, STATUS_DISABLED, STATUS_NO_PROGRA
 def default_options() -> dict:
     """Profils et plannings proposés à l'installation (modifiables ensuite)."""
     return {
+        CONF_MIGRATIONS: ["summer_profiles"],
         CONF_GROUPS: {},
         CONF_PROFILES: {
             "hors_gel": {"name": "Hors gel", ATTR_HVAC_MODE: "heat", ATTR_TEMPERATURE: 10.0},
@@ -73,6 +79,18 @@ def default_options() -> dict:
                 ATTR_TEMPERATURE: 19.0,
             },
             "boost": {"name": "Boost", ATTR_HVAC_MODE: "heat", ATTR_TEMPERATURE: 23.0},
+            "confort_ete": {
+                "name": "Confort été",
+                ATTR_HVAC_MODE: "cool",
+                ATTR_TEMPERATURE: 26.0,
+                ATTR_OUTDOOR_DELTA: 10.0,
+            },
+            "eco_ete": {
+                "name": "Eco été",
+                ATTR_HVAC_MODE: "cool",
+                ATTR_TEMPERATURE: 28.0,
+                ATTR_OUTDOOR_DELTA: 10.0,
+            },
             "arret": {"name": "Arrêt", ATTR_HVAC_MODE: "off"},
             "manuel": {"name": "Manuel"},
         },
@@ -92,6 +110,8 @@ CARD_URL_BASE = "/split_scheduler_static"
 # Couleurs des profils sur la carte (repérés par leur nom, sans accents ni casse)
 _PROFILE_COLORS = (
     ("hors gel", "#4fc3f7"),
+    ("confort ete", "#f4511e"),
+    ("eco ete", "#7cb342"),
     ("eco absence", "#26a69a"),
     ("eco", "#43a047"),
     ("confort absence", "#fdd835"),
@@ -155,6 +175,9 @@ def describe_profile(profile: dict, language: str | None = "fr") -> str:
         parts.append(("oscill. " if lang == "fr" else "swing ") + swing)
     if (hswing := profile.get(ATTR_SWING_HORIZONTAL_MODE)) is not None:
         parts.append(("oscill. horiz. " if lang == "fr" else "h-swing ") + hswing)
+    if (delta := profile.get(ATTR_OUTDOOR_DELTA)) is not None:
+        value = f"{delta:g}".replace(".", ",") if lang == "fr" else f"{delta:g}"
+        parts.append(("écart ext. max " if lang == "fr" else "max outdoor gap ") + f"{value} °C")
     if not parts:
         return "aucun réglage modifié" if lang == "fr" else "no setting changed"
     return " · ".join(parts)
@@ -192,3 +215,7 @@ def with_positions(options: dict) -> dict:
         for index, item in enumerate(options.get(kind, {}).values()):
             item[CONF_POS] = index
     return options
+
+
+SUMMER_PROFILES = ("confort_ete", "eco_ete")
+MIGRATION_SUMMER_PROFILES = "summer_profiles"

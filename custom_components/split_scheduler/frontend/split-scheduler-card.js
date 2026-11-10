@@ -17,10 +17,10 @@
  *       manual: [temperature, fan_mode, swing_mode, hvac_mode]
  *       compressor: [avg_24h, avg_profile]   # démarrages du compresseur par heure
  *       compressor_timeline: true            # frise des marches du compresseur
- *       chart: both                          # none | ambient | setpoint | both
+ *       chart: [ambient, setpoint, outdoor]  # courbes du jour (au choix)
  */
 
-const CARD_VERSION = "1.3.0";
+const CARD_VERSION = "1.4.0";
 const ICON_URL = new URL("icon.png", import.meta.url).href;
 
 const GROUP_DEFAULTS = {
@@ -31,8 +31,14 @@ const GROUP_DEFAULTS = {
   manual: ["temperature", "fan_mode"],
   compressor: [],
   compressor_timeline: false,
-  chart: "none",
+  chart: [],
 };
+
+/** Courbes demandées : liste [ambient, setpoint, outdoor] (anciennes valeurs « both »… acceptées). */
+function chartSeries(chart) {
+  if (Array.isArray(chart)) return chart.filter((c) => ["ambient", "setpoint", "outdoor"].includes(c));
+  return { ambient: ["ambient"], setpoint: ["setpoint"], both: ["ambient", "setpoint"] }[chart] || [];
+}
 
 const HISTORY_TTL = 300000; // historique relu toutes les 5 minutes
 
@@ -105,11 +111,19 @@ const I18N = {
     t_ambient: "Ambiance",
     t_setpoint: "Consigne",
     e_compressor_timeline: "Frise des démarrages du compresseur (sous celle des profils)",
-    e_chart: "Courbe du jour",
+    e_chart: "Courbes du jour",
     ch_none: "Aucune",
     ch_ambient: "Température ambiante",
     ch_setpoint: "Consigne",
     ch_both: "Ambiance et consigne",
+    ch_outdoor: "Température extérieure",
+    t_outdoor: "Extérieur",
+    outdoor: "Extérieur",
+    outdoor_avg: "(moy. 1 h)",
+    adapted: "Adaptée",
+    profile_target: "Profil : {t} °C",
+    adapt_cool: "Forte chaleur : consigne relevée à {e} °C (extérieur {o} °C − écart max {d} °C). Elle redescend vers {p} °C quand l'extérieur baisse.",
+    adapt_heat: "Grand froid : consigne abaissée à {e} °C (extérieur {o} °C + écart max {d} °C). Elle remonte vers {p} °C quand l'extérieur se radoucit.",
   },
   en: {
     card_name: "Split scheduler",
@@ -178,11 +192,19 @@ const I18N = {
     t_ambient: "Room",
     t_setpoint: "Target",
     e_compressor_timeline: "Compressor starts timeline (below the profile timeline)",
-    e_chart: "Today's chart",
+    e_chart: "Today's charts",
     ch_none: "None",
     ch_ambient: "Room temperature",
     ch_setpoint: "Target",
     ch_both: "Room and target",
+    ch_outdoor: "Outdoor temperature",
+    t_outdoor: "Outdoor",
+    outdoor: "Outdoor",
+    outdoor_avg: "(1 h avg.)",
+    adapted: "Adapted",
+    profile_target: "Profile: {t} °C",
+    adapt_cool: "Heatwave: target raised to {e} °C (outdoor {o} °C − max gap {d} °C). It goes back to {p} °C as the outdoor temperature drops.",
+    adapt_heat: "Severe cold: target lowered to {e} °C (outdoor {o} °C + max gap {d} °C). It goes back to {p} °C as it gets milder.",
   },
 };
 
@@ -203,6 +225,10 @@ const ICONS = {
   down: "M6 9l6 6 6-6",
   up: "M6 15l6-6 6 6",
   wave: "M2 12c2-6 4-6 5 0s3 6 5 0 3-6 5 0 3 6 5 0",
+  sun: "M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8zM12 2v2M12 20v2M2 12h2M20 12h2M5 5l1.5 1.5M17.5 17.5 19 19M5 19l1.5-1.5M17.5 6.5 19 5",
+  adapt_down: "M12 3v10M8 9l4 4 4-4M5 21h14",
+  adapt_up: "M12 21V11M8 15l4-4 4 4M5 3h14",
+  info: "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM12 11v5M12 8v.5",
 };
 
 function lang(hass) {
@@ -487,14 +513,29 @@ class SplitSchedulerCard extends HTMLElement {
     const nextIso = nextState && !["unknown", "unavailable"].includes(nextState.state) ? nextState.state : null;
     const nextProfile = nextState?.attributes?.prochain_profil;
 
+    // Adaptation de la consigne à la température extérieure
+    const pa = profileState?.attributes || {};
+    const adapted = pa.adaptation_exterieure === true;
+    const outdoorAvg = pa.temperature_exterieure;
+    let outdoorChip = "";
+    if (pa.ecart_max_exterieur != null && outdoorAvg != null) {
+      outdoorChip = `<span class="chip">${svg(ICONS.sun, 16)}${esc(this._t("outdoor"))} <strong>${this._fmt(outdoorAvg)} °C</strong> <span class="small">${esc(this._t("outdoor_avg"))}</span></span>`;
+    }
+
     let banner = "";
+    if (adapted && status !== "disabled") {
+      const text = this._t(mode === "heat" ? "adapt_heat" : "adapt_cool")
+        .replace("{e}", this._fmt(pa.consigne_appliquee, 0)).replace("{o}", this._fmt(outdoorAvg, 0))
+        .replace("{d}", this._fmt(pa.ecart_max_exterieur, 0)).replace("{p}", this._fmt(pa.consigne_profil, 0));
+      banner += `<div class="banner info">${svg(ICONS.info, 18)}<span>${esc(text)}</span></div>`;
+    }
     if (status === "override") {
       const until = nextIso ? " " + this._t("override_until").replace("{time}", esc(this._time(nextIso))).replace("{profile}", esc(nextProfile || "")) : "";
-      banner = `<div class="banner warn"><span>${esc(this._t("override_text"))}${until}</span><button type="button" class="filled" data-action="resume" data-group="${esc(g.group)}">${esc(this._t("resume"))}</button></div>`;
+      banner += `<div class="banner warn"><span>${esc(this._t("override_text"))}${until}</span><button type="button" class="filled" data-action="resume" data-group="${esc(g.group)}">${esc(this._t("resume"))}</button></div>`;
     } else if (status === "disabled") {
-      banner = `<div class="banner"><span>${esc(this._t("disabled_text"))}</span><button type="button" class="outlined" data-action="programming-on" data-group="${esc(g.group)}">${esc(this._t("reactivate"))}</button></div>`;
+      banner += `<div class="banner"><span>${esc(this._t("disabled_text"))}</span><button type="button" class="outlined" data-action="programming-on" data-group="${esc(g.group)}">${esc(this._t("reactivate"))}</button></div>`;
     } else if (status === "no_program") {
-      banner = `<div class="banner"><span>${esc(this._t("no_program_text"))}</span></div>`;
+      banner += `<div class="banner"><span>${esc(this._t("no_program_text"))}</span></div>`;
     }
 
     const timeline = this._renderTimeline(
@@ -515,13 +556,15 @@ class SplitSchedulerCard extends HTMLElement {
           <span class="status" style="background:${mix(statusColor, 18)};color:${mix(statusColor, 70, "var(--primary-text-color)")}">${svg(statusIcon, 14)}${esc(I18N[lang(this._hass)].status[status] || status)}</span>
         </div>
         <div class="row between end">
-          <div class="col"><span class="muted small">${esc(this._t("setpoint"))}</span>${big}</div>
+          <div class="col"><span class="muted small">${esc(this._t("setpoint"))}</span>
+            <span class="row bigrow">${big}${adapted ? `<span class="adapted">${svg(pa.consigne_appliquee > pa.consigne_profil ? ICONS.adapt_up : ICONS.adapt_down, 13)}${esc(this._t("adapted"))}</span>` : ""}</span>
+            ${adapted ? `<span class="muted small">${esc(this._t("profile_target").replace("{t}", this._fmt(pa.consigne_profil)))}</span>` : ""}</div>
           <div class="col right">
             ${profile ? `<span class="pchip" style="background:${mix(color, 20)};color:${mix(color, 55, "var(--primary-text-color)")}"><i style="background:${color}"></i>${esc(profile.name)}</span>` : ""}
             <span class="muted small">${esc(hvac[mode] || "")}</span>
           </div>
         </div>
-        ${ambient || extra ? `<div class="chips">${ambient}${extra}</div>` : ""}
+        ${ambient || extra || outdoorChip ? `<div class="chips">${ambient}${outdoorChip}${extra}</div>` : ""}
         ${banner}
         ${timeline}
         ${editToggle}
@@ -568,8 +611,8 @@ class SplitSchedulerCard extends HTMLElement {
     const nowPct = ((now.minutes / 1440) * 100).toFixed(2);
     const compressorEntity = g.info.compressor;
     const showCompressor = g.compressor_timeline && compressorEntity;
-    const chart = ["ambient", "setpoint", "both"].includes(g.chart) ? g.chart : "none";
-    if (!showProfiles && !showCompressor && chart === "none") return "";
+    const chart = chartSeries(g.chart);
+    if (!showProfiles && !showCompressor && !chart.length) return "";
     const rows = [];
     if (showProfiles) {
       const planning = this._info.plannings.find((p) => p.name === planningName);
@@ -594,7 +637,7 @@ class SplitSchedulerCard extends HTMLElement {
       rows.push(`<div class="cbar" title="${esc(this._t("t_compressor"))}">${blocks}${ticks}<b style="left:${nowPct}%"></b></div>`);
       legend.push(`<span><i class="lg run"></i>${esc(this._t("t_compressor"))} · ${esc(this._t("t_starts").replace("{n}", starts.length))}</span>`);
     }
-    if (chart !== "none") {
+    if (chart.length) {
       rows.push(this._renderChart(history, chart, nowPct, legend));
     }
     rows.push(`<div class="ticks"><span>0 h</span><span>6 h</span><span>12 h</span><span>18 h</span><span>24 h</span></div>`);
@@ -643,8 +686,9 @@ class SplitSchedulerCard extends HTMLElement {
       series.push({ points: points.filter(([, v]) => v === null || Number.isFinite(v)), cls, step });
       legend.push(`<span><i class="lg ${cls}"></i>${esc(label)}</span>`);
     };
-    if (mode === "ambient" || mode === "both") add("ambient", "amb", this._t("t_ambient"), false);
-    if (mode === "setpoint" || mode === "both") add("setpoint", "set", this._t("t_setpoint"), true);
+    if (mode.includes("ambient")) add("ambient", "amb", this._t("t_ambient"), false);
+    if (mode.includes("setpoint")) add("setpoint", "set", this._t("t_setpoint"), true);
+    if (mode.includes("outdoor")) add("outdoor", "out", this._t("t_outdoor"), false);
     const values = series.flatMap((s) => s.points.map(([, v]) => v)).filter((v) => v !== null);
     if (!values.length) return `<div class="chart empty" style="height:${H}px"></div>`;
     let lo = Math.floor(Math.min(...values) - 0.5);
@@ -680,7 +724,7 @@ class SplitSchedulerCard extends HTMLElement {
   _ensureHistory() {
     for (const g of this._groupConfigs()) {
       if (!g.info) continue;
-      const needs = (g.compressor_timeline && g.info.compressor) || ["ambient", "setpoint", "both"].includes(g.chart);
+      const needs = (g.compressor_timeline && g.info.compressor) || chartSeries(g.chart).length > 0;
       const cached = this._history[g.group];
       if (!needs || this._historyLoading.has(g.group)) continue;
       if (cached && Date.now() - cached.fetched < HISTORY_TTL && cached.key === this._historyKey(g)) continue;
@@ -693,7 +737,7 @@ class SplitSchedulerCard extends HTMLElement {
   }
 
   _historyKey(g) {
-    return [g.compressor_timeline, g.chart, g.temperature_entity, g.info.compressor].join("|");
+    return [g.compressor_timeline, chartSeries(g.chart).join(","), g.temperature_entity, g.info.compressor, this._info.outdoor].join("|");
   }
 
   async _fetchHistory(g) {
@@ -702,8 +746,10 @@ class SplitSchedulerCard extends HTMLElement {
     const midnight = now.getTime() - (z.minutes * 60 + now.getSeconds()) * 1000 - now.getMilliseconds();
     const climate = g.info.climates[0];
     const ambientSensor = this._state(g.temperature_entity) ? g.temperature_entity : null;
-    const wantAmbient = g.chart === "ambient" || g.chart === "both";
-    const wantSetpoint = g.chart === "setpoint" || g.chart === "both";
+    const series = chartSeries(g.chart);
+    const wantAmbient = series.includes("ambient");
+    const wantSetpoint = series.includes("setpoint");
+    const outdoorEntity = series.includes("outdoor") ? this._info.outdoor : null;
     const wantCompressor = g.compressor_timeline && g.info.compressor;
     const base = {
       type: "history/history_during_period",
@@ -712,7 +758,7 @@ class SplitSchedulerCard extends HTMLElement {
       include_start_time_state: true,
       significant_changes_only: false,
     };
-    const sensors = [wantCompressor ? g.info.compressor : null, wantAmbient && ambientSensor ? ambientSensor : null].filter(Boolean);
+    const sensors = [wantCompressor ? g.info.compressor : null, wantAmbient && ambientSensor ? ambientSensor : null, outdoorEntity].filter(Boolean);
     const needClimate = wantSetpoint || (wantAmbient && !ambientSensor);
     const [sensorRows, climateRows] = await Promise.all([
       sensors.length ? this._hass.callWS({ ...base, entity_ids: sensors, minimal_response: true, no_attributes: true }) : {},
@@ -731,6 +777,10 @@ class SplitSchedulerCard extends HTMLElement {
         result.ambient = climateStates.map((e) => [time(e), num(e.a?.current_temperature)]);
         result.ambientLive = () => num(this._state(climate)?.attributes.current_temperature);
       }
+    }
+    if (outdoorEntity) {
+      result.outdoor = (sensorRows[outdoorEntity] || []).map((e) => [time(e), num(e.s)]);
+      result.outdoorLive = () => num(this._state(outdoorEntity)?.state);
     }
     if (wantSetpoint) {
       result.setpoint = climateStates.map((e) => [time(e), e.s === "off" ? null : num(e.a?.temperature)]);
@@ -938,6 +988,7 @@ const CARD_CSS = `
   .chart path { fill: none; stroke-width: 2; vector-effect: non-scaling-stroke; stroke-linejoin: round; }
   .chart path.amb { stroke: var(--primary-color); }
   .chart path.set { stroke: var(--warning-color, #ffa000); stroke-dasharray: 5 3; }
+  .chart path.out { stroke: var(--error-color, #e53935); stroke-dasharray: 2 3; }
   .chart .grid { stroke: var(--divider-color); stroke-width: 1; vector-effect: non-scaling-stroke; }
   .chart .now { stroke: var(--primary-text-color); stroke-width: 1.5; vector-effect: non-scaling-stroke; opacity: .6; }
   .chart.empty { background: ${mix("var(--primary-text-color)", 4)}; border-radius: 6px; }
@@ -948,6 +999,11 @@ const CARD_CSS = `
   .lg { display: inline-block; width: 14px; height: 0; border-top: 2px solid; }
   .lg.amb { border-color: var(--primary-color); }
   .lg.set { border-color: var(--warning-color, #ffa000); border-top-style: dashed; }
+  .lg.out { border-color: var(--error-color, #e53935); border-top-style: dotted; }
+  .bigrow { align-items: flex-end; gap: 10px; flex-wrap: wrap; }
+  .adapted { display: inline-flex; align-items: center; gap: 5px; height: 24px; margin-bottom: 4px; padding: 0 9px; border-radius: 12px; font-size: 12px; font-weight: 500; background: ${mix("var(--info-color, #039be5)", 16)}; color: ${mix("var(--info-color, #039be5)", 70, "var(--primary-text-color)")}; }
+  .banner.info { background: ${mix("var(--info-color, #039be5)", 13)}; }
+  .banner.info svg { flex-shrink: 0; color: ${mix("var(--info-color, #039be5)", 80, "var(--primary-text-color)")}; }
   .lg.run { height: 8px; border: 0; border-radius: 2px; background: ${mix("var(--primary-color)", 45)}; box-shadow: inset 2px 0 var(--primary-color); }
   button { font: inherit; cursor: pointer; color: inherit; }
   .expander { display: flex; align-items: center; justify-content: center; gap: 6px; min-height: 44px; border: 0; border-top: 1px solid var(--divider-color); background: none; color: var(--primary-color); font-weight: 500; margin: 0 -4px -6px; }
@@ -1068,7 +1124,7 @@ class SplitSchedulerCardEditor extends HTMLElement {
     const names = Object.fromEntries((this._info?.groups || []).map((g) => [g.id, g.name]));
     const manualOptions = ["temperature", "fan_mode", "swing_mode", "hvac_mode"].map((v) => ({ value: v, label: this._t(`m_${v}`) }));
     const compressorOptions = ["avg_24h", "avg_profile"].map((v) => ({ value: v, label: this._t(`o_${v}`) }));
-    const chartOptions = ["none", "ambient", "setpoint", "both"].map((v) => ({ value: v, label: this._t(`ch_${v}`) }));
+    const chartOptions = ["ambient", "setpoint", "outdoor"].map((v) => ({ value: v, label: this._t(`ch_${v}`) }));
     const infoById = Object.fromEntries((this._info?.groups || []).map((g) => [g.id, g]));
 
     groups.forEach((group, index) => {
@@ -1078,7 +1134,7 @@ class SplitSchedulerCardEditor extends HTMLElement {
       const summary = document.createElement("summary");
       summary.textContent = names[group.group] || group.group;
       details.append(summary);
-      const data = { ...GROUP_DEFAULTS, ...group };
+      const data = { ...GROUP_DEFAULTS, ...group, chart: chartSeries(group.chart) };
       details.append(this._form(
         data,
         [
@@ -1089,7 +1145,7 @@ class SplitSchedulerCardEditor extends HTMLElement {
           { name: "manual", label: "e_manual", selector: { select: { multiple: true, mode: "list", options: manualOptions } } },
           { name: "compressor", label: "e_compressor", selector: { select: { multiple: true, mode: "list", options: compressorOptions } } },
           { name: "compressor_timeline", label: "e_compressor_timeline", selector: { boolean: {} } },
-          { name: "chart", label: "e_chart", selector: { select: { mode: "dropdown", options: chartOptions } } },
+          { name: "chart", label: "e_chart", selector: { select: { multiple: true, mode: "list", options: chartOptions } } },
         ],
         (value) => {
           const list = [...this._config.groups];

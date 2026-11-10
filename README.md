@@ -53,6 +53,8 @@ tous modifiables ou supprimables :
 | Confort         | Chauffage | 20 °C    |
 | Confort absence | Chauffage | 19 °C    |
 | Boost           | Chauffage | 23 °C    |
+| Confort été     | Climatisation | 26 °C (écart ext. max 10 °C) |
+| Eco été         | Climatisation | 28 °C (écart ext. max 10 °C) |
 | Arrêt           | Arrêt     | –        |
 | Manuel          | –         | –        |
 
@@ -196,8 +198,9 @@ Programmation des splits*. Tout se règle dans son éditeur visuel :
   - **frise du compresseur** (facultative) : sous la frise des profils, une
     bande fine montre les périodes de marche du compresseur aujourd'hui et un
     trait à chaque démarrage, avec leur nombre en légende ;
-  - **courbe du jour** (facultative) : température ambiante, consigne, ou les
-    deux, de 0 h à 24 h sur le même axe que les frises (60 px de haut). La
+  - **courbes du jour** (facultatives) : température ambiante, consigne et/ou
+    température extérieure, de 0 h à 24 h sur le même axe que les frises
+    (60 px de haut). La
     température ambiante est celle du capteur choisi pour le groupe, sinon
     celle du split ; la consigne n'est pas tracée quand le split est arrêté.
 
@@ -227,7 +230,7 @@ groups:
     manual: [temperature, fan_mode, swing_mode]
     compressor: [avg_24h, avg_profile]
     compressor_timeline: true
-    chart: both                  # none | ambient | setpoint | both
+    chart: [ambient, setpoint, outdoor]   # courbes du jour, au choix
 ```
 
 La frise du compresseur et la courbe lisent l'historique de Home Assistant
@@ -235,6 +238,53 @@ La frise du compresseur et la courbe lisent l'historique de Home Assistant
 5 minutes, plus en direct pour la valeur actuelle.
 
 Sans liste `groups`, tous les groupes sont affichés avec les réglages par défaut.
+
+## Consigne adaptée à la température extérieure
+
+Par canicule (ou grand froid), une consigne habituelle peut être hors de portée
+du split, qui tournerait alors à fond en permanence. Chaque profil peut fixer un
+**écart maximal avec l'extérieur** :
+
+- **climatisation** (et déshumidification) : la consigne ne descend jamais à
+  plus de cet écart sous la température extérieure. *Confort été* (26 °C, écart
+  10 °C) donne 29 °C quand il fait 39 °C dehors ;
+- **chauffage** : la consigne ne monte jamais à plus de cet écart au-dessus de
+  l'extérieur (vide par défaut) ;
+- vide : pas d'adaptation.
+
+La consigne obtenue est ensuite arrondie au pas du split et bornée à ses limites
+(16–32 °C sur un Faikout S21).
+
+**Capteur extérieur** : un seul pour tous les groupes, dans *Configurer →
+Réglages généraux*. Vide, c'est le capteur « Outside » de Faikout (sonde de
+l'unité extérieure), détecté automatiquement ; il peut être faussé quand l'unité
+tourne, surtout en climatisation : un capteur à l'ombre ou une station météo est
+plus fiable.
+
+**Réactivité**, pour ménager le matériel :
+
+- température extérieure lissée sur **60 minutes** (moyenne pondérée dans le
+  temps ; les périodes d'indisponibilité sont ignorées) ;
+- consigne renvoyée au plus **toutes les 30 minutes**, seulement si elle change
+  d'au moins **0,5 °C** ;
+- **aucune adaptation si un changement de profil est prévu dans moins de 30
+  minutes** ;
+- sans valeur extérieure valable pendant une heure : retour à la consigne du
+  profil ;
+- après un réglage manuel (carte, télécommande), plus d'adaptation jusqu'au
+  prochain créneau.
+
+Au changement de profil, la consigne adaptée est appliquée tout de suite. Le
+sélecteur de profil porte les attributs `consigne_profil`, `consigne_appliquee`,
+`ecart_max_exterieur`, `temperature_exterieure` et `adaptation_exterieure`.
+
+Sur la carte : badge **Adaptée** à côté de la consigne, rappel de la consigne du
+profil, pastille **Extérieur (moy. 1 h)** et bandeau explicatif ; la courbe du
+jour peut aussi tracer la température extérieure.
+
+Sur une installation existante, *Confort été* et *Eco été* sont ajoutés une
+seule fois à la mise à jour (sauf si un profil du même nom existe déjà) ; un
+profil supprimé ensuite n'est pas recréé.
 
 ## Démarrages du compresseur
 
