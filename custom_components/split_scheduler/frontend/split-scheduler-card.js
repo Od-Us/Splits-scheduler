@@ -16,9 +16,11 @@
  *       show_profiles: true
  *       manual: [temperature, fan_mode, swing_mode, hvac_mode]
  *       compressor: [avg_24h, avg_profile]   # démarrages du compresseur par heure
+ *       compressor_timeline: true            # frise des marches du compresseur
+ *       chart: both                          # none | ambient | setpoint | both
  */
 
-const CARD_VERSION = "1.2.0";
+const CARD_VERSION = "1.3.0";
 const ICON_URL = new URL("icon.png", import.meta.url).href;
 
 const GROUP_DEFAULTS = {
@@ -28,7 +30,11 @@ const GROUP_DEFAULTS = {
   show_profiles: true,
   manual: ["temperature", "fan_mode"],
   compressor: [],
+  compressor_timeline: false,
+  chart: "none",
 };
+
+const HISTORY_TTL = 300000; // historique relu toutes les 5 minutes
 
 const I18N = {
   fr: {
@@ -93,6 +99,17 @@ const I18N = {
     e_compressor_ok: "Tous les splits du groupe sont considérés comme reliés au même compresseur.",
     o_avg_24h: "Moyenne sur les 24 dernières heures",
     o_avg_profile: "Moyenne depuis le dernier changement de profil",
+    t_compressor: "Compresseur",
+    t_starts: "{n} démarrage(s)",
+    t_running: "En marche",
+    t_ambient: "Ambiance",
+    t_setpoint: "Consigne",
+    e_compressor_timeline: "Frise des démarrages du compresseur (sous celle des profils)",
+    e_chart: "Courbe du jour",
+    ch_none: "Aucune",
+    ch_ambient: "Température ambiante",
+    ch_setpoint: "Consigne",
+    ch_both: "Ambiance et consigne",
   },
   en: {
     card_name: "Split scheduler",
@@ -155,6 +172,17 @@ const I18N = {
     e_compressor_ok: "All splits of the group are assumed to share the same compressor.",
     o_avg_24h: "Average over the last 24 hours",
     o_avg_profile: "Average since the last profile change",
+    t_compressor: "Compressor",
+    t_starts: "{n} start(s)",
+    t_running: "Running",
+    t_ambient: "Room",
+    t_setpoint: "Target",
+    e_compressor_timeline: "Compressor starts timeline (below the profile timeline)",
+    e_chart: "Today's chart",
+    ch_none: "None",
+    ch_ambient: "Room temperature",
+    ch_setpoint: "Target",
+    ch_both: "Room and target",
   },
 };
 
@@ -196,7 +224,7 @@ function toMinutes(hhmm) {
 const WEEKDAYS = { Mon: 0, Tue: 1, Wed: 2, Thu: 3, Fri: 4, Sat: 5, Sun: 6 };
 
 /** Jour (0 = lundi), minutes et date du jour dans le fuseau de Home Assistant. */
-function zonedNow(timeZone, date = new Date()) {
+function zonedNow(timeZone, date = new Date(Date.now())) {
   const parts = Object.fromEntries(
     new Intl.DateTimeFormat("en-US", {
       timeZone, weekday: "short", year: "numeric", month: "2-digit", day: "2-digit",
@@ -240,6 +268,9 @@ class SplitSchedulerCard extends HTMLElement {
     super();
     this.attachShadow({ mode: "open" });
     this._expanded = new Set();
+    this._history = {};
+    this._historyLoading = new Set();
+    this._historyStamp = 0;
     this._pending = {};
     this._timers = {};
     this._signature = "";
@@ -289,7 +320,7 @@ class SplitSchedulerCard extends HTMLElement {
       this._signature = "";
       this._render();
     }, 60000);
-    this._reload = setInterval(() => this._load(), 300000);
+    this._reload = setInterval(() => { this._load(); this._ensureHistory(); }, 300000);
   }
 
   disconnectedCallback() {
@@ -360,11 +391,12 @@ class SplitSchedulerCard extends HTMLElement {
       const s = this._hass.states[id];
       return s ? `${id}:${s.last_updated}` : id;
     });
-    return [JSON.stringify(this._config), this._error, JSON.stringify(this._pending), [...this._expanded].join(), lang(this._hass), ...parts].join("|");
+    return [JSON.stringify(this._config), this._error, JSON.stringify(this._pending), [...this._expanded].join(), lang(this._hass), this._historyStamp, ...parts].join("|");
   }
 
   _render() {
     if (!this._config || !this._hass) return;
+    if (this._info) this._ensureHistory();
     const signature = this._computeSignature();
     if (signature === this._signature) return;
     this._signature = signature;
@@ -391,7 +423,7 @@ class SplitSchedulerCard extends HTMLElement {
     const cfg = this._config;
     const tz = this._info.time_zone;
     const loc = this._hass?.locale?.language || this._hass?.language || "fr";
-    const now = new Intl.DateTimeFormat(loc, { weekday: "long", day: "numeric", month: "long", hour: "2-digit", minute: "2-digit", timeZone: tz }).format(new Date());
+    const now = new Intl.DateTimeFormat(loc, { weekday: "long", day: "numeric", month: "long", hour: "2-digit", minute: "2-digit", timeZone: tz }).format(new Date(Date.now()));
     const title = cfg.title
       ? `<div class="title"><img src="${ICON_URL}" alt=""><div><h1>${esc(cfg.title)}</h1><span class="muted">${esc(now)}</span></div></div>`
       : "";
@@ -465,8 +497,10 @@ class SplitSchedulerCard extends HTMLElement {
       banner = `<div class="banner"><span>${esc(this._t("no_program_text"))}</span></div>`;
     }
 
-    const timeline = this._config.show_timeline && status !== "disabled" && status !== "no_program"
-      ? this._renderTimeline(g, planningState?.state, nextIso, nextProfile) : "";
+    const timeline = this._renderTimeline(
+      g, planningState?.state, nextIso, nextProfile,
+      this._config.show_timeline && status !== "disabled" && status !== "no_program",
+    );
 
     const hasEdit = g.show_planning || g.show_profiles || (g.manual || []).length || e.programming;
     const open = this._expanded.has(g.group);
@@ -529,25 +563,183 @@ class SplitSchedulerCard extends HTMLElement {
     return this._chip(icon, s.attributes.friendly_name || entityId, esc(value));
   }
 
-  _renderTimeline(g, planningName, nextIso, nextProfile) {
-    const planning = this._info.plannings.find((p) => p.name === planningName);
-    const program = planning?.programs?.[g.group] || {};
+  _renderTimeline(g, planningName, nextIso, nextProfile, showProfiles) {
     const now = zonedNow(this._info.time_zone);
-    const segments = daySegments(program, now.weekday);
-    const bars = segments.map((s) => {
-      const p = this._info.profiles.find((x) => x.id === s.profile);
-      const width = ((s.to - s.from) / 14.4).toFixed(3);
-      return `<span style="width:${width}%;background:${p ? p.color : "var(--divider-color)"}" title="${esc(p ? p.name : "")}"></span>`;
+    const nowPct = ((now.minutes / 1440) * 100).toFixed(2);
+    const compressorEntity = g.info.compressor;
+    const showCompressor = g.compressor_timeline && compressorEntity;
+    const chart = ["ambient", "setpoint", "both"].includes(g.chart) ? g.chart : "none";
+    if (!showProfiles && !showCompressor && chart === "none") return "";
+    const rows = [];
+    if (showProfiles) {
+      const planning = this._info.plannings.find((p) => p.name === planningName);
+      const program = planning?.programs?.[g.group] || {};
+      const bars = daySegments(program, now.weekday).map((s) => {
+        const p = this._info.profiles.find((x) => x.id === s.profile);
+        const width = ((s.to - s.from) / 14.4).toFixed(3);
+        return `<span style="width:${width}%;background:${p ? p.color : "var(--divider-color)"}" title="${esc(p ? p.name : "")}"></span>`;
+      }).join("");
+      const next = nextIso
+        ? `${esc(this._t("next"))} : <strong>${esc(this._time(nextIso))} ${esc(nextProfile || "")}</strong>`
+        : esc(this._t("no_change"));
+      rows.push(`<div class="row between small muted"><span>${esc(this._t("today"))}</span><span>${next}</span></div>`);
+      rows.push(`<div class="bar">${bars}<b style="left:${nowPct}%"></b></div>`);
+    }
+    const history = this._history[g.group];
+    const legend = [];
+    if (showCompressor) {
+      const { runs, starts } = this._compressorRuns(history);
+      const blocks = runs.map(([a, b]) => `<i style="left:${a.toFixed(3)}%;width:${Math.max(b - a, 0.15).toFixed(3)}%"></i>`).join("");
+      const ticks = starts.map((x) => `<u style="left:${x.toFixed(3)}%"></u>`).join("");
+      rows.push(`<div class="cbar" title="${esc(this._t("t_compressor"))}">${blocks}${ticks}<b style="left:${nowPct}%"></b></div>`);
+      legend.push(`<span><i class="lg run"></i>${esc(this._t("t_compressor"))} · ${esc(this._t("t_starts").replace("{n}", starts.length))}</span>`);
+    }
+    if (chart !== "none") {
+      rows.push(this._renderChart(history, chart, nowPct, legend));
+    }
+    rows.push(`<div class="ticks"><span>0 h</span><span>6 h</span><span>12 h</span><span>18 h</span><span>24 h</span></div>`);
+    if (legend.length) rows.push(`<div class="legend">${legend.join("")}</div>`);
+    return `<div class="timeline">${rows.join("")}</div>`;
+  }
+
+  /** Marches du compresseur aujourd'hui : périodes [début, fin] et démarrages (en %). */
+  _compressorRuns(history) {
+    const points = [...(history?.comp || [])];
+    const live = this._state(history?.compEntity);
+    if (live) points.push([Date.now(), live.state]);
+    const runs = [];
+    const starts = [];
+    let on = null;
+    let was = null;
+    for (const [t, value] of points) {
+      const n = Number(value);
+      if (!Number.isFinite(n)) continue;
+      const x = this._pct(t, history);
+      if (n > 0 && on === null) {
+        on = x;
+        if (was === false) starts.push(x);
+      } else if (n <= 0 && on !== null) {
+        runs.push([on, x]);
+        on = null;
+      }
+      was = n > 0;
+    }
+    if (on !== null) runs.push([on, this._pct(Date.now(), history)]);
+    return { runs, starts };
+  }
+
+  _pct(t, history) {
+    const start = history?.midnight ?? Date.now();
+    return Math.min(100, Math.max(0, ((t - start) / 86400000) * 100));
+  }
+
+  _renderChart(history, mode, nowPct, legend) {
+    const H = 60;
+    const series = [];
+    const add = (key, cls, label, step) => {
+      const points = [...(history?.[key] || [])];
+      const live = history?.[`${key}Live`]?.();
+      if (live !== undefined && live !== null) points.push([Date.now(), live]);
+      series.push({ points: points.filter(([, v]) => v === null || Number.isFinite(v)), cls, step });
+      legend.push(`<span><i class="lg ${cls}"></i>${esc(label)}</span>`);
+    };
+    if (mode === "ambient" || mode === "both") add("ambient", "amb", this._t("t_ambient"), false);
+    if (mode === "setpoint" || mode === "both") add("setpoint", "set", this._t("t_setpoint"), true);
+    const values = series.flatMap((s) => s.points.map(([, v]) => v)).filter((v) => v !== null);
+    if (!values.length) return `<div class="chart empty" style="height:${H}px"></div>`;
+    let lo = Math.floor(Math.min(...values) - 0.5);
+    let hi = Math.ceil(Math.max(...values) + 0.5);
+    if (hi - lo < 2) { lo -= 1; hi += 1; }
+    const y = (v) => (H - 4 - ((v - lo) / (hi - lo)) * (H - 8)).toFixed(1);
+    const x = (t) => (this._pct(t, history) * 10).toFixed(1); // viewBox de 1000 de large
+    const paths = series.map((s) => {
+      let d = "";
+      let previous = null;
+      for (const [t, v] of s.points) {
+        if (v === null) { previous = null; continue; }
+        if (previous === null) d += `M${x(t)} ${y(v)}`;
+        else if (s.step) d += `H${x(t)}V${y(v)}`;
+        else d += `L${x(t)} ${y(v)}`;
+        previous = v;
+      }
+      return d ? `<path class="${s.cls}" d="${d}"></path>` : "";
     }).join("");
-    const next = nextIso
-      ? `${esc(this._t("next"))} : <strong>${esc(this._time(nextIso))} ${esc(nextProfile || "")}</strong>`
-      : esc(this._t("no_change"));
     return `
-      <div class="timeline">
-        <div class="row between small muted"><span>${esc(this._t("today"))}</span><span>${next}</span></div>
-        <div class="bar">${bars}<b style="left:${((now.minutes / 1440) * 100).toFixed(2)}%"></b></div>
-        <div class="ticks"><span>0 h</span><span>6 h</span><span>12 h</span><span>18 h</span><span>24 h</span></div>
+      <div class="chart" style="height:${H}px">
+        <svg viewBox="0 0 1000 ${H}" preserveAspectRatio="none" aria-hidden="true">
+          <line class="grid" x1="0" x2="1000" y1="${y(hi)}" y2="${y(hi)}"></line>
+          <line class="grid" x1="0" x2="1000" y1="${y(lo)}" y2="${y(lo)}"></line>
+          ${paths}
+          <line class="now" x1="${(Number(nowPct) * 10).toFixed(1)}" x2="${(Number(nowPct) * 10).toFixed(1)}" y1="0" y2="${H}"></line>
+        </svg>
+        <span class="ylab top">${this._fmt(hi, 0)}°</span><span class="ylab bottom">${this._fmt(lo, 0)}°</span>
       </div>`;
+  }
+
+  /** Historique du jour (compresseur, ambiance, consigne) d'un groupe, relu toutes les 5 minutes. */
+  _ensureHistory() {
+    for (const g of this._groupConfigs()) {
+      if (!g.info) continue;
+      const needs = (g.compressor_timeline && g.info.compressor) || ["ambient", "setpoint", "both"].includes(g.chart);
+      const cached = this._history[g.group];
+      if (!needs || this._historyLoading.has(g.group)) continue;
+      if (cached && Date.now() - cached.fetched < HISTORY_TTL && cached.key === this._historyKey(g)) continue;
+      this._historyLoading.add(g.group);
+      this._fetchHistory(g)
+        .then((h) => { this._history[g.group] = h; })
+        .catch(() => { this._history[g.group] = { fetched: Date.now(), key: this._historyKey(g), midnight: Date.now() }; })
+        .finally(() => { this._historyLoading.delete(g.group); this._historyStamp++; this._render(); });
+    }
+  }
+
+  _historyKey(g) {
+    return [g.compressor_timeline, g.chart, g.temperature_entity, g.info.compressor].join("|");
+  }
+
+  async _fetchHistory(g) {
+    const now = new Date(Date.now());
+    const z = zonedNow(this._info.time_zone, now);
+    const midnight = now.getTime() - (z.minutes * 60 + now.getSeconds()) * 1000 - now.getMilliseconds();
+    const climate = g.info.climates[0];
+    const ambientSensor = this._state(g.temperature_entity) ? g.temperature_entity : null;
+    const wantAmbient = g.chart === "ambient" || g.chart === "both";
+    const wantSetpoint = g.chart === "setpoint" || g.chart === "both";
+    const wantCompressor = g.compressor_timeline && g.info.compressor;
+    const base = {
+      type: "history/history_during_period",
+      start_time: new Date(midnight).toISOString(),
+      end_time: now.toISOString(),
+      include_start_time_state: true,
+      significant_changes_only: false,
+    };
+    const sensors = [wantCompressor ? g.info.compressor : null, wantAmbient && ambientSensor ? ambientSensor : null].filter(Boolean);
+    const needClimate = wantSetpoint || (wantAmbient && !ambientSensor);
+    const [sensorRows, climateRows] = await Promise.all([
+      sensors.length ? this._hass.callWS({ ...base, entity_ids: sensors, minimal_response: true, no_attributes: true }) : {},
+      needClimate ? this._hass.callWS({ ...base, entity_ids: [climate], minimal_response: false, no_attributes: false }) : {},
+    ]);
+    const time = (e) => Math.max(midnight, ((e.lu ?? e.lc) || 0) * 1000);
+    const num = (v) => (v === undefined || v === null || v === "" || Number.isNaN(Number(v)) ? null : Number(v));
+    const result = { fetched: Date.now(), key: this._historyKey(g), midnight, compEntity: wantCompressor ? g.info.compressor : null };
+    if (wantCompressor) result.comp = (sensorRows[g.info.compressor] || []).map((e) => [time(e), e.s]);
+    const climateStates = climateRows[climate] || [];
+    if (wantAmbient) {
+      if (ambientSensor) {
+        result.ambient = (sensorRows[ambientSensor] || []).map((e) => [time(e), num(e.s)]);
+        result.ambientLive = () => num(this._state(ambientSensor)?.state);
+      } else {
+        result.ambient = climateStates.map((e) => [time(e), num(e.a?.current_temperature)]);
+        result.ambientLive = () => num(this._state(climate)?.attributes.current_temperature);
+      }
+    }
+    if (wantSetpoint) {
+      result.setpoint = climateStates.map((e) => [time(e), e.s === "off" ? null : num(e.a?.temperature)]);
+      result.setpointLive = () => {
+        const c = this._state(climate);
+        return c && c.state !== "off" ? num(c.attributes.temperature) : null;
+      };
+    }
+    return result;
   }
 
   _renderEdit(g, { profileState, planningState, climate, nextIso }) {
@@ -737,6 +929,26 @@ const CARD_CSS = `
   .bar { position: relative; display: flex; height: 12px; border-radius: 6px; overflow: hidden; }
   .bar b { position: absolute; top: 0; bottom: 0; width: 3px; margin-left: -1px; background: var(--primary-text-color); border-radius: 2px; }
   .ticks { display: flex; justify-content: space-between; font-size: 11px; color: var(--secondary-text-color); }
+  .cbar { position: relative; height: 8px; border-radius: 4px; background: ${mix("var(--primary-text-color)", 7)}; overflow: hidden; }
+  .cbar i { position: absolute; top: 0; bottom: 0; background: ${mix("var(--primary-color)", 45)}; }
+  .cbar u { position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: var(--primary-color); }
+  .cbar b { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--primary-text-color); }
+  .chart { position: relative; }
+  .chart svg { display: block; width: 100%; height: 100%; overflow: visible; }
+  .chart path { fill: none; stroke-width: 2; vector-effect: non-scaling-stroke; stroke-linejoin: round; }
+  .chart path.amb { stroke: var(--primary-color); }
+  .chart path.set { stroke: var(--warning-color, #ffa000); stroke-dasharray: 5 3; }
+  .chart .grid { stroke: var(--divider-color); stroke-width: 1; vector-effect: non-scaling-stroke; }
+  .chart .now { stroke: var(--primary-text-color); stroke-width: 1.5; vector-effect: non-scaling-stroke; opacity: .6; }
+  .chart.empty { background: ${mix("var(--primary-text-color)", 4)}; border-radius: 6px; }
+  .ylab { position: absolute; left: 0; font-size: 10px; line-height: 1; color: var(--secondary-text-color); background: var(--ha-card-background, var(--card-background-color, #fff)); padding: 0 2px; border-radius: 3px; }
+  .ylab.top { top: -2px; } .ylab.bottom { bottom: -2px; }
+  .legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 11.5px; color: var(--secondary-text-color); }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .lg { display: inline-block; width: 14px; height: 0; border-top: 2px solid; }
+  .lg.amb { border-color: var(--primary-color); }
+  .lg.set { border-color: var(--warning-color, #ffa000); border-top-style: dashed; }
+  .lg.run { height: 8px; border: 0; border-radius: 2px; background: ${mix("var(--primary-color)", 45)}; box-shadow: inset 2px 0 var(--primary-color); }
   button { font: inherit; cursor: pointer; color: inherit; }
   .expander { display: flex; align-items: center; justify-content: center; gap: 6px; min-height: 44px; border: 0; border-top: 1px solid var(--divider-color); background: none; color: var(--primary-color); font-weight: 500; margin: 0 -4px -6px; }
   .edit { display: flex; flex-direction: column; gap: 16px; padding: 12px; border-radius: 12px; background: var(--secondary-background-color, #f7f8fa); }
@@ -856,6 +1068,7 @@ class SplitSchedulerCardEditor extends HTMLElement {
     const names = Object.fromEntries((this._info?.groups || []).map((g) => [g.id, g.name]));
     const manualOptions = ["temperature", "fan_mode", "swing_mode", "hvac_mode"].map((v) => ({ value: v, label: this._t(`m_${v}`) }));
     const compressorOptions = ["avg_24h", "avg_profile"].map((v) => ({ value: v, label: this._t(`o_${v}`) }));
+    const chartOptions = ["none", "ambient", "setpoint", "both"].map((v) => ({ value: v, label: this._t(`ch_${v}`) }));
     const infoById = Object.fromEntries((this._info?.groups || []).map((g) => [g.id, g]));
 
     groups.forEach((group, index) => {
@@ -875,6 +1088,8 @@ class SplitSchedulerCardEditor extends HTMLElement {
           { name: "show_profiles", label: "e_show_profiles", selector: { boolean: {} } },
           { name: "manual", label: "e_manual", selector: { select: { multiple: true, mode: "list", options: manualOptions } } },
           { name: "compressor", label: "e_compressor", selector: { select: { multiple: true, mode: "list", options: compressorOptions } } },
+          { name: "compressor_timeline", label: "e_compressor_timeline", selector: { boolean: {} } },
+          { name: "chart", label: "e_chart", selector: { select: { mode: "dropdown", options: chartOptions } } },
         ],
         (value) => {
           const list = [...this._config.groups];
@@ -883,7 +1098,10 @@ class SplitSchedulerCardEditor extends HTMLElement {
           list[index] = item;
           this._emit({ ...this._config, groups: list });
         },
-        { compressor: this._t(infoById[group.group]?.compressor ? "e_compressor_ok" : "e_compressor_missing") },
+        {
+          compressor: this._t(infoById[group.group]?.compressor ? "e_compressor_ok" : "e_compressor_missing"),
+          compressor_timeline: infoById[group.group]?.compressor ? "" : this._t("e_compressor_missing"),
+        },
       ));
       const actions = document.createElement("div");
       actions.className = "actions";

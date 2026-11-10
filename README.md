@@ -192,7 +192,14 @@ Programmation des splits*. Tout se règle dans son éditeur visuel :
     température mesurée par le split (souvent faussée) ; vide = celle du split ;
   - **capteurs supplémentaires** affichés sous l'état (humidité, CO₂…) ;
   - **partie « Modifier »** : choix du planning du groupe, choix d'un profil,
-    réglages manuels proposés (consigne, ventilateur, oscillation, mode).
+    réglages manuels proposés (consigne, ventilateur, oscillation, mode) ;
+  - **frise du compresseur** (facultative) : sous la frise des profils, une
+    bande fine montre les périodes de marche du compresseur aujourd'hui et un
+    trait à chaque démarrage, avec leur nombre en légende ;
+  - **courbe du jour** (facultative) : température ambiante, consigne, ou les
+    deux, de 0 h à 24 h sur le même axe que les frises (60 px de haut). La
+    température ambiante est celle du capteur choisi pour le groupe, sinon
+    celle du split ; la consigne n'est pas tracée quand le split est arrêté.
 
 Chaque groupe montre en permanence la **consigne** (en grand), le profil actif,
 la température ambiante, le statut, la frise du jour et le prochain changement.
@@ -218,7 +225,14 @@ groups:
     show_planning: true
     show_profiles: true
     manual: [temperature, fan_mode, swing_mode]
+    compressor: [avg_24h, avg_profile]
+    compressor_timeline: true
+    chart: both                  # none | ambient | setpoint | both
 ```
+
+La frise du compresseur et la courbe lisent l'historique de Home Assistant
+(intégration *Historique*, active par défaut) et se mettent à jour toutes les
+5 minutes, plus en direct pour la valeur actuelle.
 
 Sans liste `groups`, tous les groupes sont affichés avec les réglages par défaut.
 
