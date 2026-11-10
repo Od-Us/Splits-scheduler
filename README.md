@@ -18,9 +18,19 @@ Tout se configure depuis l'interface de Home Assistant, sans YAML.
 
 ## Installation
 
-1. Copier le dossier `custom_components/split_scheduler` dans le dossier
-   `config/custom_components/` de Home Assistant (via Samba, File editor,
-   Studio Code Server…).
+### Avec HACS (dépôt public)
+
+1. *HACS → ⋮ → Dépôts personnalisés* : ajouter
+   `https://github.com/Od-Us/Splits-scheduler`, catégorie **Intégration**.
+2. Télécharger « Programmation des splits », puis redémarrer Home Assistant.
+3. *Paramètres → Appareils et services → Ajouter une intégration →
+   « Programmation des splits »*.
+
+### À la main
+
+1. Copier le dossier `custom_components/split_scheduler` de ce dépôt dans le
+   dossier `config/custom_components/` de Home Assistant (via Samba, File
+   editor, Studio Code Server…).
 2. Redémarrer Home Assistant.
 3. *Paramètres → Appareils et services → Ajouter une intégration →
    « Programmation des splits »*.
@@ -241,7 +251,6 @@ sélecteur de planning global.
 Python 3.14 est nécessaire (comme Home Assistant 2026.x) :
 
 ```bash
-cd home_assistant
 pip install pytest-homeassistant-custom-component
 pytest
 ```
