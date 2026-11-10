@@ -27,6 +27,11 @@ Tout se configure depuis l'interface de Home Assistant, sans YAML.
 
 Testée sur Home Assistant Core 2026.10 et 2026.11 (Home Assistant OS).
 
+**Après une mise à jour de l'intégration**, redémarrez Home Assistant puis
+**rechargez la page** (Ctrl+F5, ou fermez complètement et rouvrez l'application
+Companion). Sinon, l'interface garde les textes de l'ancienne version : les
+nouveaux écrans s'affichent avec des libellés vides.
+
 À l'installation, des profils et des plannings sont créés d'office ; ils sont
 tous modifiables ou supprimables :
 
