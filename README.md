@@ -262,6 +262,10 @@ serveur Home Assistant.
 
 ## Licence
 
-Distribuée sous licence [MIT](LICENSE) : libre d'utilisation, de modification et
-de redistribution, y compris à des fins commerciales, en conservant la mention de
-copyright.
+Copyright (C) 2026 Od-Us
+
+Ce programme est un logiciel libre, distribué sous licence
+[GNU GPL version 3](LICENSE) (GPL-3.0-only) : vous pouvez l'utiliser, l'étudier,
+le modifier et le redistribuer, à condition que toute version redistribuée,
+modifiée ou non, reste sous la même licence et que son code source soit fourni.
+Il est fourni sans aucune garantie.
