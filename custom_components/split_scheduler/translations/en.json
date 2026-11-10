@@ -37,8 +37,13 @@
         "title": "New group",
         "data": {
           "name": "Name",
-          "climates": "Splits (thermostats)"
-        }
+          "climates": "Splits (thermostats)",
+          "compressor": "Compressor sensor (optional)"
+        },
+        "data_description": {
+          "compressor": "Empty: Faikout's “Compressor” sensor is detected automatically. Used to count compressor starts."
+        },
+        "description": "**Caution:** all splits of a group are assumed to be connected to the **same compressor** (same outdoor unit). If not, create one group per outdoor unit, otherwise compressor start counts will be wrong."
       },
       "group_edit_pick": {
         "title": "Edit a group",
@@ -50,8 +55,13 @@
         "title": "Edit group",
         "data": {
           "name": "Name",
-          "climates": "Splits (thermostats)"
-        }
+          "climates": "Splits (thermostats)",
+          "compressor": "Compressor sensor (optional)"
+        },
+        "data_description": {
+          "compressor": "Empty: Faikout's “Compressor” sensor is detected automatically. Used to count compressor starts."
+        },
+        "description": "**Caution:** all splits of a group are assumed to be connected to the **same compressor** (same outdoor unit). If not, create one group per outdoor unit, otherwise compressor start counts will be wrong."
       },
       "group_delete": {
         "title": "Delete groups",
@@ -296,6 +306,12 @@
       },
       "next_change": {
         "name": "Next change"
+      },
+      "compressor_starts_24h": {
+        "name": "Compressor starts per hour (24 h)"
+      },
+      "compressor_starts_profile": {
+        "name": "Compressor starts per hour (current profile)"
       }
     }
   }

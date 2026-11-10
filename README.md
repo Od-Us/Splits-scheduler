@@ -222,6 +222,37 @@ groups:
 
 Sans liste `groups`, tous les groupes sont affichés avec les réglages par défaut.
 
+## Démarrages du compresseur
+
+> **Précaution :** tous les splits d'un groupe sont considérés comme reliés au
+> **même compresseur** (même unité extérieure). Si ce n'est pas le cas, créez un
+> groupe par unité extérieure : sinon les démarrages comptés seront faux.
+
+Dans la configuration d'un groupe, le champ **Capteur du compresseur** indique le
+capteur qui donne la fréquence (ou la vitesse) du compresseur. Laissé vide, il
+est détecté automatiquement : c'est le capteur « Compressor » publié par
+Faikout sur le même appareil que l'un des splits. Un démarrage est compté à
+chaque passage de 0 à une valeur positive ; les valeurs indisponibles sont
+ignorées.
+
+Deux capteurs sont alors créés pour le groupe (en démarrages par heure) :
+
+| Entité | Valeur |
+|---|---|
+| `sensor.<groupe>_demarrages_du_compresseur_par_heure_24_h` | moyenne sur les 24 dernières heures |
+| `sensor.<groupe>_demarrages_du_compresseur_par_heure_profil_actuel` | moyenne depuis le dernier changement de profil |
+
+Attributs : `demarrages` (nombre), `duree_h` (durée observée), `depuis`, et
+`profil` pour le second. Si l'enregistreur (historique) est actif, les
+démarrages déjà enregistrés sont repris à l'installation ; sinon la moyenne
+porte sur la durée observée depuis l'installation (aucune valeur avant 5
+minutes). Les démarrages sont conservés sur 7 jours au plus.
+
+Sur la carte, l'option **Démarrages du compresseur par heure** de chaque groupe
+affiche l'une ou l'autre moyenne, ou les deux, sous l'état (comme les capteurs
+supplémentaires) : « Compresseur (24 h) 2,3 dém./h », « Compresseur depuis
+Confort 1,5 dém./h ».
+
 ## Splits Faikout (MQTT)
 
 Vérifié avec les attributs d'un Faikout en port **S21** et
@@ -234,6 +265,7 @@ d'après le code source de Faikout (découverte MQTT de Home Assistant).
 | Ventilateur | `auto`, `night`, `low`, `lowMedium`, `medium`, `mediumHigh`, `high` | Proposés tels quels dans le formulaire. |
 | Oscillation | `off`, `H`, `V`, `H+V` | Une seule valeur pour les deux axes : laisser vide « Oscillation horizontale ». |
 | Préréglage | `none`, `boost`, `home` | Jamais modifié par l'intégration : le split reste sur `home`. |
+| Compresseur | capteur « Compressor » (Hz, ou tr/min avec l'option `hacomprpm`) | Détecté automatiquement pour compter les démarrages. |
 
 **Désactiver l'option « Auto » (`autoe`) de Faikout** sur les splits programmés :
 sinon le module change lui-même de mode et de consigne, et l'intégration

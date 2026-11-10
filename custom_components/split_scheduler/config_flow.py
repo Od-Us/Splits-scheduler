@@ -15,6 +15,7 @@ from homeassistant.config_entries import (
     OptionsFlow,
 )
 from homeassistant.core import callback
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.selector import (
     BooleanSelector,
     EntitySelector,
@@ -38,6 +39,7 @@ from .const import (
     ATTR_SWING_MODE,
     ATTR_TEMPERATURE,
     CONF_CLIMATES,
+    CONF_COMPRESSOR,
     CONF_GROUPS,
     CONF_PLANNINGS,
     CONF_PROFILES,
@@ -181,10 +183,12 @@ class SplitSchedulerOptionsFlow(OptionsFlow):
             elif not climates:
                 errors[CONF_CLIMATES] = "climates_required"
             else:
-                self.opts[CONF_GROUPS][group_id or _new_id()] = {
-                    "name": name,
-                    CONF_CLIMATES: climates,
-                }  # la position est renumérotée à l'enregistrement
+                group = {"name": name, CONF_CLIMATES: climates}
+                compressor = user_input.get(CONF_COMPRESSOR) or self._detect_compressor(climates)
+                if compressor:
+                    group[CONF_COMPRESSOR] = compressor
+                # la position est renumérotée à l'enregistrement
+                self.opts[CONF_GROUPS][group_id or _new_id()] = group
                 return await self.async_step_groups()
             values = user_input
         schema = vol.Schema(
@@ -193,9 +197,28 @@ class SplitSchedulerOptionsFlow(OptionsFlow):
                 vol.Required(CONF_CLIMATES, default=values.get(CONF_CLIMATES, [])): EntitySelector(
                     EntitySelectorConfig(domain="climate", multiple=True)
                 ),
+                vol.Optional(CONF_COMPRESSOR): EntitySelector(EntitySelectorConfig(domain="sensor")),
             }
         )
+        schema = self.add_suggested_values_to_schema(
+            schema, {CONF_COMPRESSOR: values.get(CONF_COMPRESSOR)}
+        )
         return self.async_show_form(step_id=step_id, data_schema=schema, errors=errors)
+
+    def _detect_compressor(self, climates: list[str]) -> str | None:
+        """Capteur « Compressor » du même appareil que l'un des splits (Faikout)."""
+        registry = er.async_get(self.hass)
+        for climate in climates:
+            entry = registry.async_get(climate)
+            if entry is None or entry.device_id is None:
+                continue
+            for candidate in er.async_entries_for_device(registry, entry.device_id):
+                label = normalize(
+                    f"{candidate.entity_id} {candidate.original_name or ''} {candidate.name or ''}"
+                )
+                if candidate.domain == "sensor" and "compress" in label:
+                    return candidate.entity_id
+        return None
 
     async def async_step_group_delete(
         self, user_input: dict[str, Any] | None = None

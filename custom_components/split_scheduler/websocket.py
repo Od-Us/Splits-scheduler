@@ -17,6 +17,7 @@ from .const import (
     ATTR_SWING_MODE,
     ATTR_TEMPERATURE,
     CONF_CLIMATES,
+    CONF_COMPRESSOR,
     CONF_PROGRAMS,
     DOMAIN,
     describe_profile,
@@ -32,6 +33,8 @@ _GROUP_ENTITIES = {
     "resume": ("button", "resume"),
     "status": ("sensor", "status"),
     "next_change": ("sensor", "next_change"),
+    "starts_24h": ("sensor", "compressor_starts_24h"),
+    "starts_profile": ("sensor", "compressor_starts_profile"),
 }
 
 
@@ -75,6 +78,7 @@ def ws_info(
                     "id": gid,
                     "name": group["name"],
                     "climates": group[CONF_CLIMATES],
+                    "compressor": group.get(CONF_COMPRESSOR),
                     "entities": {
                         key: entity(domain, f"{entry_id}_{gid}_{suffix}")
                         for key, (domain, suffix) in _GROUP_ENTITIES.items()

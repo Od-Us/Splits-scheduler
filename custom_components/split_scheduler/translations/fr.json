@@ -37,8 +37,13 @@
         "title": "Nouveau groupe",
         "data": {
           "name": "Nom",
-          "climates": "Splits (thermostats)"
-        }
+          "climates": "Splits (thermostats)",
+          "compressor": "Capteur du compresseur (facultatif)"
+        },
+        "data_description": {
+          "compressor": "Vide : détection automatique du capteur « Compressor » de Faikout. Sert à compter les démarrages du compresseur."
+        },
+        "description": "**Précaution :** tous les splits d'un groupe sont considérés comme reliés au **même compresseur** (même unité extérieure). Si ce n'est pas le cas, créez un groupe par unité extérieure, sinon le comptage des démarrages du compresseur sera faux."
       },
       "group_edit_pick": {
         "title": "Modifier un groupe",
@@ -50,8 +55,13 @@
         "title": "Modifier le groupe",
         "data": {
           "name": "Nom",
-          "climates": "Splits (thermostats)"
-        }
+          "climates": "Splits (thermostats)",
+          "compressor": "Capteur du compresseur (facultatif)"
+        },
+        "data_description": {
+          "compressor": "Vide : détection automatique du capteur « Compressor » de Faikout. Sert à compter les démarrages du compresseur."
+        },
+        "description": "**Précaution :** tous les splits d'un groupe sont considérés comme reliés au **même compresseur** (même unité extérieure). Si ce n'est pas le cas, créez un groupe par unité extérieure, sinon le comptage des démarrages du compresseur sera faux."
       },
       "group_delete": {
         "title": "Supprimer des groupes",
@@ -296,6 +306,12 @@
       },
       "next_change": {
         "name": "Prochain changement"
+      },
+      "compressor_starts_24h": {
+        "name": "Démarrages du compresseur par heure (24 h)"
+      },
+      "compressor_starts_profile": {
+        "name": "Démarrages du compresseur par heure (profil actuel)"
       }
     }
   }

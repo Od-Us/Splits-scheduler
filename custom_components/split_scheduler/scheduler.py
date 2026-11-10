@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 import logging
 from typing import Any
 
@@ -17,6 +17,7 @@ from homeassistant.helpers.event import (
     EventStateChangedData,
     async_track_point_in_time,
     async_track_state_change_event,
+    async_track_time_interval,
 )
 from homeassistant.helpers.start import async_at_started
 from homeassistant.helpers.storage import Store
@@ -29,6 +30,7 @@ from .const import (
     ATTR_SWING_MODE,
     ATTR_TEMPERATURE,
     CONF_CLIMATES,
+    CONF_COMPRESSOR,
     CONF_GROUPS,
     CONF_PLANNINGS,
     CONF_PROFILES,
@@ -43,6 +45,7 @@ from .const import (
     TEMPERATURE_TOLERANCE,
     ordered,
 )
+from .compressor import Average, StartLog
 from .planning import Program, current_occurrence, next_occurrence
 
 _LOGGER = logging.getLogger(__name__)
@@ -76,6 +79,8 @@ class GroupState:
     next_change: datetime | None = None
     next_profile_id: str | None = None
     has_program: bool = False
+    profile_changed_at: datetime | None = None
+    compressor: StartLog | None = None
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -84,6 +89,10 @@ class GroupState:
             "active_profile_id": self.active_profile_id,
             "override": self.override,
             "last_slot_key": self.last_slot_key,
+            "profile_changed_at": (
+                self.profile_changed_at.isoformat() if self.profile_changed_at else None
+            ),
+            "compressor": self.compressor.as_dict() if self.compressor else None,
         }
 
 
@@ -124,7 +133,13 @@ class SplitScheduler:
                 active_profile_id=active if active in self.profiles else None,
                 override=data.get("override", False),
                 last_slot_key=data.get("last_slot_key"),
+                profile_changed_at=_parse(data.get("profile_changed_at")),
             )
+            if self.groups[gid].get(CONF_COMPRESSOR):
+                stored_log = data.get("compressor")
+                self.states[gid].compressor = (
+                    StartLog.from_dict(stored_log, _parse) if stored_log else None
+                ) or StartLog(since=dt_util.utcnow())
 
     @callback
     def async_start(self) -> None:
@@ -136,6 +151,27 @@ class SplitScheduler:
         if climates:
             self._unsubs.append(
                 async_track_state_change_event(self.hass, climates, self._on_climate_change)
+            )
+        compressors = {
+            g[CONF_COMPRESSOR]: gid for gid, g in self.groups.items() if g.get(CONF_COMPRESSOR)
+        }
+        if compressors:
+            for gid, group in self.groups.items():
+                if not group.get(CONF_COMPRESSOR):
+                    continue
+                await self._async_backfill_compressor(gid)
+                log = self.states[gid].compressor
+                current = self.hass.states.get(group[CONF_COMPRESSOR])
+                if log is not None and log.running is None and current is not None:
+                    log.feed(current.last_changed, current.state)  # état de départ
+            self._unsubs.append(
+                async_track_state_change_event(
+                    self.hass, list(compressors), self._on_compressor_change
+                )
+            )
+            # Les moyennes évoluent avec le temps : mise à jour chaque minute.
+            self._unsubs.append(
+                async_track_time_interval(self.hass, self._tick, timedelta(minutes=1))
             )
         for gid in self.groups:
             await self.async_refresh_group(gid)
@@ -168,7 +204,76 @@ class SplitScheduler:
             update()
 
     def _data_to_save(self) -> dict[str, Any]:
+        now = dt_util.utcnow()
+        for state in self.states.values():
+            if state.compressor is not None:
+                keep = now - timedelta(hours=24)
+                if state.profile_changed_at is not None:
+                    keep = min(keep, state.profile_changed_at)
+                state.compressor.prune(keep, now)
         return {"groups": {gid: st.as_dict() for gid, st in self.states.items()}}
+
+    @callback
+    def _notify(self) -> None:
+        for update in list(self._listeners):
+            update()
+
+    @callback
+    def _tick(self, _now: datetime) -> None:
+        self._notify()
+
+    # ------------------------------------------------------------------ compresseur
+
+    @callback
+    def _on_compressor_change(self, event: Event[EventStateChangedData]) -> None:
+        new = event.data["new_state"]
+        if new is None:
+            return
+        for gid, group in self.groups.items():
+            log = self.states[gid].compressor
+            if group.get(CONF_COMPRESSOR) == event.data["entity_id"] and log is not None:
+                if log.feed(new.last_changed, new.state):
+                    _LOGGER.debug("Groupe « %s » : démarrage du compresseur", group["name"])
+                    self._changed()
+
+    async def _async_backfill_compressor(self, gid: str) -> None:
+        """Reconstitue les démarrages depuis l'historique (si l'enregistreur est actif)."""
+        state = self.states[gid]
+        entity_id = self.groups[gid][CONF_COMPRESSOR]
+        if "recorder" not in self.hass.config.components or state.compressor is None:
+            return
+        from homeassistant.components.recorder import history
+        from homeassistant.helpers.recorder import get_instance
+
+        now = dt_util.utcnow()
+        start = now - timedelta(hours=24)
+        if state.profile_changed_at is not None:
+            start = min(start, state.profile_changed_at)
+        start = max(start, now - timedelta(days=7))
+        try:
+            changes = await get_instance(self.hass).async_add_executor_job(
+                history.state_changes_during_period, self.hass, start, now, entity_id, True
+            )
+        except Exception as err:  # noqa: BLE001 - l'historique est un plus, pas un besoin
+            _LOGGER.debug("Historique du compresseur indisponible : %s", err)
+            return
+        states = changes.get(entity_id, [])
+        if not states:
+            return
+        log = StartLog(since=max(start, states[0].last_changed))
+        for past in states:
+            log.feed(past.last_changed, past.state)
+        state.compressor = log
+
+    def compressor_averages(self, gid: str) -> tuple[Average, Average] | None:
+        """Démarrages par heure : sur 24 h glissantes et depuis le dernier changement de profil."""
+        state = self.states[gid]
+        if state.compressor is None:
+            return None
+        now = dt_util.utcnow()
+        day = state.compressor.average(now - timedelta(hours=24), now)
+        profile = state.compressor.average(state.profile_changed_at or state.compressor.since, now)
+        return day, profile
 
     # ------------------------------------------------------------------ consultation
 
@@ -293,6 +398,8 @@ class SplitScheduler:
             _LOGGER.warning("Profil %s introuvable pour le groupe %s", profile_id, gid)
             return
         state = self.states[gid]
+        if profile_id != state.active_profile_id or state.profile_changed_at is None:
+            state.profile_changed_at = dt_util.utcnow()
         state.active_profile_id = profile_id
         state.override = manual
         state.applied_at = dt_util.utcnow()
@@ -447,3 +554,7 @@ def target_temperature(attrs: Mapping[str, Any], wanted: float) -> float:
     if high is not None:
         wanted = min(wanted, float(high))
     return wanted
+
+
+def _parse(value: str | None) -> datetime | None:
+    return dt_util.parse_datetime(value) if value else None

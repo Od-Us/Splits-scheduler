@@ -22,6 +22,7 @@ CONF_PROFILES = "profiles"
 CONF_PLANNINGS = "plannings"
 CONF_CLIMATES = "climates"
 CONF_PROGRAMS = "programs"
+CONF_COMPRESSOR = "compressor"
 
 # Réglages possibles d'un profil (absents = « ne pas modifier »)
 ATTR_HVAC_MODE = "hvac_mode"

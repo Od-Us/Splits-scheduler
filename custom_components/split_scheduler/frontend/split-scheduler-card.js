@@ -15,9 +15,10 @@
  *       show_planning: true
  *       show_profiles: true
  *       manual: [temperature, fan_mode, swing_mode, hvac_mode]
+ *       compressor: [avg_24h, avg_profile]   # démarrages du compresseur par heure
  */
 
-const CARD_VERSION = "1.1.0";
+const CARD_VERSION = "1.2.0";
 const ICON_URL = new URL("icon.png", import.meta.url).href;
 
 const GROUP_DEFAULTS = {
@@ -26,6 +27,7 @@ const GROUP_DEFAULTS = {
   show_planning: true,
   show_profiles: true,
   manual: ["temperature", "fan_mode"],
+  compressor: [],
 };
 
 const I18N = {
@@ -81,6 +83,16 @@ const I18N = {
     m_fan_mode: "Vitesse du ventilateur",
     m_swing_mode: "Oscillation",
     m_hvac_mode: "Mode (chauffage, climatisation…)",
+    compressor: "Compresseur",
+    c_24h: "Compresseur (24 h)",
+    c_profile: "Compresseur depuis {profile}",
+    c_unit: "dém./h",
+    c_detail: "{starts} démarrage(s) en {hours} h",
+    e_compressor: "Démarrages du compresseur par heure (compresseur commun à tous les splits du groupe)",
+    e_compressor_missing: "Aucun capteur de compresseur pour ce groupe : indiquez-le dans la configuration du groupe (Paramètres › Programmation des splits › Configurer › Groupes).",
+    e_compressor_ok: "Tous les splits du groupe sont considérés comme reliés au même compresseur.",
+    o_avg_24h: "Moyenne sur les 24 dernières heures",
+    o_avg_profile: "Moyenne depuis le dernier changement de profil",
   },
   en: {
     card_name: "Split scheduler",
@@ -133,6 +145,16 @@ const I18N = {
     m_fan_mode: "Fan speed",
     m_swing_mode: "Swing",
     m_hvac_mode: "Mode (heat, cool…)",
+    compressor: "Compressor",
+    c_24h: "Compressor (24 h)",
+    c_profile: "Compressor since {profile}",
+    c_unit: "starts/h",
+    c_detail: "{starts} start(s) in {hours} h",
+    e_compressor: "Compressor starts per hour (compressor shared by all splits of the group)",
+    e_compressor_missing: "No compressor sensor for this group: set it in the group configuration (Settings › Split scheduler › Configure › Groups).",
+    e_compressor_ok: "All splits of the group are assumed to share the same compressor.",
+    o_avg_24h: "Average over the last 24 hours",
+    o_avg_profile: "Average since the last profile change",
   },
 };
 
@@ -152,6 +174,7 @@ const ICONS = {
   gauge: "M4 16a8 8 0 1 1 16 0M12 16l4-5",
   down: "M6 9l6 6 6-6",
   up: "M6 15l6-6 6 6",
+  wave: "M2 12c2-6 4-6 5 0s3 6 5 0 3-6 5 0 3 6 5 0",
 };
 
 function lang(hass) {
@@ -427,7 +450,7 @@ class SplitSchedulerCard extends HTMLElement {
     } else if (attrs.current_temperature !== undefined && attrs.current_temperature !== null) {
       ambient = this._chip(ICONS.thermo, this._t(g.temperature_entity ? "split" : "ambient"), `${this._fmt(attrs.current_temperature)} °C`);
     }
-    const extra = (g.sensors || []).map((id) => this._sensorChip(id)).join("");
+    const extra = (g.sensors || []).map((id) => this._sensorChip(id)).join("") + this._compressorChips(g);
 
     const nextIso = nextState && !["unknown", "unavailable"].includes(nextState.state) ? nextState.state : null;
     const nextProfile = nextState?.attributes?.prochain_profil;
@@ -474,6 +497,25 @@ class SplitSchedulerCard extends HTMLElement {
 
   _chip(icon, label, value) {
     return `<span class="chip">${svg(icon, 16)}${label ? `${esc(label)} ` : ""}<strong>${value}</strong></span>`;
+  }
+
+  _compressorChips(g) {
+    const wanted = g.compressor || [];
+    const e = g.info.entities;
+    const chips = [];
+    for (const [key, entity] of [["avg_24h", e.starts_24h], ["avg_profile", e.starts_profile]]) {
+      const s = wanted.includes(key) ? this._state(entity) : undefined;
+      if (!s) continue;
+      const a = s.attributes;
+      const label = key === "avg_24h"
+        ? this._t("c_24h")
+        : this._t("c_profile").replace("{profile}", a.profil || "");
+      const value = ["unknown", "unavailable"].includes(s.state) ? "–" : `${this._fmt(s.state)} ${this._t("c_unit")}`;
+      const title = a.demarrages !== undefined
+        ? this._t("c_detail").replace("{starts}", a.demarrages).replace("{hours}", this._fmt(a.duree_h)) : "";
+      chips.push(`<span class="chip" title="${esc(title)}">${svg(ICONS.wave, 16)}${esc(label)} <strong>${esc(value)}</strong></span>`);
+    }
+    return chips.join("");
   }
 
   _sensorChip(entityId) {
@@ -768,12 +810,13 @@ class SplitSchedulerCardEditor extends HTMLElement {
     this.dispatchEvent(new CustomEvent("config-changed", { detail: { config }, bubbles: true, composed: true }));
   }
 
-  _form(data, schema, onChange) {
+  _form(data, schema, onChange, helpers = {}) {
     const form = document.createElement("ha-form");
     form.hass = this._hass;
     form.data = data;
     form.schema = schema;
     form.computeLabel = (s) => this._t(s.label || s.name);
+    form.computeHelper = (s) => helpers[s.name] || "";
     form.addEventListener("value-changed", (ev) => onChange(ev.detail.value));
     return form;
   }
@@ -812,6 +855,8 @@ class SplitSchedulerCardEditor extends HTMLElement {
     }
     const names = Object.fromEntries((this._info?.groups || []).map((g) => [g.id, g.name]));
     const manualOptions = ["temperature", "fan_mode", "swing_mode", "hvac_mode"].map((v) => ({ value: v, label: this._t(`m_${v}`) }));
+    const compressorOptions = ["avg_24h", "avg_profile"].map((v) => ({ value: v, label: this._t(`o_${v}`) }));
+    const infoById = Object.fromEntries((this._info?.groups || []).map((g) => [g.id, g]));
 
     groups.forEach((group, index) => {
       const details = document.createElement("details");
@@ -829,6 +874,7 @@ class SplitSchedulerCardEditor extends HTMLElement {
           { name: "show_planning", label: "e_show_planning", selector: { boolean: {} } },
           { name: "show_profiles", label: "e_show_profiles", selector: { boolean: {} } },
           { name: "manual", label: "e_manual", selector: { select: { multiple: true, mode: "list", options: manualOptions } } },
+          { name: "compressor", label: "e_compressor", selector: { select: { multiple: true, mode: "list", options: compressorOptions } } },
         ],
         (value) => {
           const list = [...this._config.groups];
@@ -837,6 +883,7 @@ class SplitSchedulerCardEditor extends HTMLElement {
           list[index] = item;
           this._emit({ ...this._config, groups: list });
         },
+        { compressor: this._t(infoById[group.group]?.compressor ? "e_compressor_ok" : "e_compressor_missing") },
       ));
       const actions = document.createElement("div");
       actions.className = "actions";
