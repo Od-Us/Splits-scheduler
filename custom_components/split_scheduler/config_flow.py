@@ -44,6 +44,8 @@ from .const import (
     CONF_OUTDOOR,
     CONF_SETTINGS,
     ATTR_OUTDOOR_DELTA,
+    ATTR_PRESET_MODE,
+    PRESETS,
     CONF_GROUPS,
     CONF_PLANNINGS,
     CONF_PROFILES,
@@ -355,6 +357,16 @@ class SplitSchedulerOptionsFlow(OptionsFlow):
         fields[vol.Optional(ATTR_OUTDOOR_DELTA)] = NumberSelector(
             NumberSelectorConfig(
                 min=1, max=30, step=0.5, mode=NumberSelectorMode.BOX, unit_of_measurement="°C"
+            )
+        )
+        presets = [p for p in PRESETS if p in self._known_modes("preset_modes")]
+        if values.get(ATTR_PRESET_MODE) and values[ATTR_PRESET_MODE] not in presets:
+            presets.append(values[ATTR_PRESET_MODE])
+        if "home" in presets and "none" in presets:
+            presets.remove("none")  # « Normal » : home chez Faikout
+        fields[vol.Optional(ATTR_PRESET_MODE)] = SelectSelector(
+            SelectSelectorConfig(
+                options=presets, translation_key="preset_mode", mode=SelectSelectorMode.DROPDOWN
             )
         )
         for setting, list_attr in _MODE_LISTS.items():

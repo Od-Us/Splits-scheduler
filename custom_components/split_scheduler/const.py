@@ -35,6 +35,9 @@ ATTR_TEMPERATURE = "temperature"
 ATTR_FAN_MODE = "fan_mode"
 ATTR_SWING_MODE = "swing_mode"
 ATTR_SWING_HORIZONTAL_MODE = "swing_horizontal_mode"
+# Préréglage du split (Faikout : home = normal, eco = ECONO, boost = Powerful)
+ATTR_PRESET_MODE = "preset_mode"
+PRESETS = ["home", "none", "eco", "boost"]
 # Écart maximal entre la consigne et la température extérieure (pas un réglage du split)
 ATTR_OUTDOOR_DELTA = "outdoor_max_delta"
 PROFILE_SETTINGS = (
@@ -43,6 +46,7 @@ PROFILE_SETTINGS = (
     ATTR_FAN_MODE,
     ATTR_SWING_MODE,
     ATTR_SWING_HORIZONTAL_MODE,
+    ATTR_PRESET_MODE,
 )
 
 HVAC_MODES = ["off", "heat", "cool", "heat_cool", "auto", "dry", "fan_only"]
@@ -158,6 +162,9 @@ _HVAC_LABELS = {
 }
 
 
+_PRESET_LABELS = {"home": "Normal", "none": "Normal", "eco": "ECONO", "boost": "Powerful"}
+
+
 def lang_of(language: str | None) -> str:
     return "fr" if (language or "").startswith("fr") else "en"
 
@@ -177,6 +184,8 @@ def describe_profile(profile: dict, language: str | None = "fr") -> str:
         parts.append(("oscill. " if lang == "fr" else "swing ") + swing)
     if (hswing := profile.get(ATTR_SWING_HORIZONTAL_MODE)) is not None:
         parts.append(("oscill. horiz. " if lang == "fr" else "h-swing ") + hswing)
+    if (preset := profile.get(ATTR_PRESET_MODE)) is not None:
+        parts.append(_PRESET_LABELS.get(preset, preset))
     if (delta := profile.get(ATTR_OUTDOOR_DELTA)) is not None:
         value = f"{delta:g}".replace(".", ",") if lang == "fr" else f"{delta:g}"
         parts.append(("écart ext. max " if lang == "fr" else "max outdoor gap ") + f"{value} °C")

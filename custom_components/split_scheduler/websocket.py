@@ -14,6 +14,7 @@ from homeassistant.helpers import entity_registry as er
 from .const import (
     ATTR_FAN_MODE,
     ATTR_HVAC_MODE,
+    ATTR_PRESET_MODE,
     ATTR_SWING_MODE,
     ATTR_TEMPERATURE,
     CONF_CLIMATES,
@@ -43,6 +44,7 @@ _GROUP_ENTITIES = {
 def async_register(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, ws_info)
     websocket_api.async_register_command(hass, ws_manual)
+    websocket_api.async_register_command(hass, ws_override_shift)
 
 
 def _scheduler(hass: HomeAssistant) -> SplitScheduler | None:
@@ -123,6 +125,7 @@ def ws_info(
         vol.Optional(ATTR_HVAC_MODE): str,
         vol.Optional(ATTR_FAN_MODE): str,
         vol.Optional(ATTR_SWING_MODE): str,
+        vol.Optional(ATTR_PRESET_MODE): str,
     }
 )
 @websocket_api.async_response
@@ -136,7 +139,7 @@ async def ws_manual(
         return
     settings = {
         key: msg[key]
-        for key in (ATTR_HVAC_MODE, ATTR_TEMPERATURE, ATTR_FAN_MODE, ATTR_SWING_MODE)
+        for key in (ATTR_HVAC_MODE, ATTR_TEMPERATURE, ATTR_FAN_MODE, ATTR_SWING_MODE, ATTR_PRESET_MODE)
         if key in msg
     }
     if not settings:
@@ -144,3 +147,26 @@ async def ws_manual(
         return
     await scheduler.async_manual_settings(msg["group_id"], settings)
     connection.send_result(msg["id"])
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): "split_scheduler/override_shift",
+        vol.Required("group_id"): str,
+        vol.Required("minutes"): vol.All(vol.Coerce(int), vol.Range(min=-1440, max=1440)),
+    }
+)
+@websocket_api.async_response
+async def ws_override_shift(
+    hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]
+) -> None:
+    """Décale l'heure de reprise d'une dérogation (boutons −30 / +30 de la carte)."""
+    scheduler = _scheduler(hass)
+    if scheduler is None or msg["group_id"] not in scheduler.groups:
+        connection.send_error(msg["id"], "not_found", "Groupe inconnu")
+        return
+    until = await scheduler.async_shift_override(msg["group_id"], msg["minutes"])
+    if until is None:
+        connection.send_error(msg["id"], "no_override", "Aucune dérogation en cours")
+        return
+    connection.send_result(msg["id"], {"reprise": until.isoformat()})

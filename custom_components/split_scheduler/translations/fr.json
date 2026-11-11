@@ -90,12 +90,14 @@
           "fan_mode": "Vitesse du ventilateur",
           "swing_mode": "Oscillation (verticale)",
           "swing_horizontal_mode": "Oscillation horizontale",
-          "outdoor_max_delta": "Écart maximal avec l'extérieur"
+          "outdoor_max_delta": "Écart maximal avec l'extérieur",
+          "preset_mode": "Préréglage du split"
         },
         "data_description": {
           "fan_mode": "Valeurs proposées par vos splits ; vous pouvez aussi en saisir une.",
           "temperature": "Ignorée en mode Arrêt et Ventilation seule.",
-          "outdoor_max_delta": "Climatisation : la consigne ne descend jamais à plus de cet écart sous la température extérieure (moyenne sur 1 h) ; par exemple 26 °C et 10 °C d'écart donnent 29 °C quand il fait 39 °C dehors. Chauffage : la consigne ne monte jamais à plus de cet écart au-dessus. Vide : pas d'adaptation."
+          "outdoor_max_delta": "Climatisation : la consigne ne descend jamais à plus de cet écart sous la température extérieure (moyenne sur 1 h) ; par exemple 26 °C et 10 °C d'écart donnent 29 °C quand il fait 39 °C dehors. Chauffage : la consigne ne monte jamais à plus de cet écart au-dessus. Vide : pas d'adaptation.",
+          "preset_mode": "Valeurs proposées par vos splits. ECONO limite la consommation (et la puissance) ; Powerful pousse l'appareil au maximum. Les deux s'excluent ; Normal les coupe. Un split qui ne gère pas la valeur l'ignore. Vide : préréglage inchangé."
         }
       },
       "profile_edit_pick": {
@@ -114,12 +116,14 @@
           "fan_mode": "Vitesse du ventilateur",
           "swing_mode": "Oscillation (verticale)",
           "swing_horizontal_mode": "Oscillation horizontale",
-          "outdoor_max_delta": "Écart maximal avec l'extérieur"
+          "outdoor_max_delta": "Écart maximal avec l'extérieur",
+          "preset_mode": "Préréglage du split"
         },
         "data_description": {
           "fan_mode": "Valeurs proposées par vos splits ; vous pouvez aussi en saisir une.",
           "temperature": "Ignorée en mode Arrêt et Ventilation seule.",
-          "outdoor_max_delta": "Climatisation : la consigne ne descend jamais à plus de cet écart sous la température extérieure (moyenne sur 1 h) ; par exemple 26 °C et 10 °C d'écart donnent 29 °C quand il fait 39 °C dehors. Chauffage : la consigne ne monte jamais à plus de cet écart au-dessus. Vide : pas d'adaptation."
+          "outdoor_max_delta": "Climatisation : la consigne ne descend jamais à plus de cet écart sous la température extérieure (moyenne sur 1 h) ; par exemple 26 °C et 10 °C d'écart donnent 29 °C quand il fait 39 °C dehors. Chauffage : la consigne ne monte jamais à plus de cet écart au-dessus. Vide : pas d'adaptation.",
+          "preset_mode": "Valeurs proposées par vos splits. ECONO limite la consommation (et la puissance) ; Powerful pousse l'appareil au maximum. Les deux s'excluent ; Normal les coupe. Un split qui ne gère pas la valeur l'ignore. Vide : préréglage inchangé."
         }
       },
       "profile_delete": {
@@ -296,6 +300,14 @@
         "fri": "Vendredi",
         "sat": "Samedi",
         "sun": "Dimanche"
+      }
+    },
+    "preset_mode": {
+      "options": {
+        "home": "Normal",
+        "none": "Normal",
+        "eco": "ECONO",
+        "boost": "Powerful"
       }
     }
   },

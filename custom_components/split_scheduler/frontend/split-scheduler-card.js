@@ -20,7 +20,7 @@
  *       chart: [ambient, setpoint, outdoor]  # courbes du jour (au choix)
  */
 
-const CARD_VERSION = "1.5.0";
+const CARD_VERSION = "1.6.0";
 const ICON_URL = new URL("icon.png", import.meta.url).href;
 
 const GROUP_DEFAULTS = {
@@ -136,6 +136,15 @@ const I18N = {
     loading: "Chargement de l'historique…",
     no_data: "Aucune donnée sur cette période.",
     no_data_at: "Aucune donnée à cet instant.",
+    resume_at: "Reprise",
+    resume_now: "Reprendre maintenant",
+    earlier: "Reprise 30 minutes plus tôt",
+    later: "Reprise 30 minutes plus tard",
+    skipped: "{t} {p} ignoré · ensuite {n}",
+    then: "Ensuite {n}",
+    preset: "Préréglage",
+    m_preset_mode: "Préréglage (Normal, ECONO, Powerful)",
+    presets: { home: "Normal", none: "Normal", eco: "ECONO", boost: "Powerful" },
     profiles_band: "Profils",
     compressor_band: "Compresseur",
     starts_period: "{n} démarrage sur la période · {r} démarrage/h en moyenne|{n} démarrages sur la période · {r} démarrage/h en moyenne",
@@ -238,6 +247,15 @@ const I18N = {
     loading: "Loading history…",
     no_data: "No data for this period.",
     no_data_at: "No data at this time.",
+    resume_at: "Resumes",
+    resume_now: "Resume now",
+    earlier: "Resume 30 minutes earlier",
+    later: "Resume 30 minutes later",
+    skipped: "{t} {p} skipped · then {n}",
+    then: "Then {n}",
+    preset: "Preset",
+    m_preset_mode: "Preset (Normal, ECONO, Powerful)",
+    presets: { home: "Normal", none: "Normal", eco: "ECONO", boost: "Powerful" },
     profiles_band: "Profiles",
     compressor_band: "Compressor",
     starts_period: "{n} start in the period · {r} starts/h on average|{n} starts in the period · {r} starts/h on average",
@@ -267,6 +285,7 @@ const ICONS = {
   down: "M6 9l6 6 6-6",
   up: "M6 15l6-6 6 6",
   ext: "M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5",
+  resume: "M4 12a8 8 0 1 0 2.3-5.6M4 4v4h4M10 9v6l5-3z",
   left: "M15 6l-6 6 6 6",
   right: "M9 6l6 6-6 6",
   close: "M6 6l12 12M18 6L6 18",
@@ -589,8 +608,21 @@ class SplitSchedulerCard extends HTMLElement {
       banner += `<div class="banner info">${svg(ICONS.info, 18)}<span>${esc(text)}</span></div>`;
     }
     if (status === "override") {
-      const until = nextIso ? " " + this._t("override_until").replace("{time}", esc(this._time(nextIso))).replace("{profile}", esc(nextProfile || "")) : "";
-      banner += `<div class="banner warn"><span>${esc(this._t("override_text"))}${until}</span><button type="button" class="filled" data-action="resume" data-group="${esc(g.group)}">${esc(this._t("resume"))}</button></div>`;
+      const gid = esc(g.group);
+      const resume = pa.reprise;
+      const skip = pa.creneau_ignore;
+      const note = skip
+        ? this._t("skipped").replace("{t}", this._time(skip.heure)).replace("{p}", skip.profil || "").replace("{n}", pa.reprise_profil || "")
+        : (pa.reprise_profil ? this._t("then").replace("{n}", pa.reprise_profil) : "");
+      banner += `<div class="banner warn compact">
+        <div class="row">
+          <span class="when"><span class="small">${esc(this._t("resume_at"))}</span> <strong>${resume ? esc(this._time(resume)) : "–"}</strong></span>
+          ${resume ? `<button type="button" class="shift" data-action="shift" data-group="${gid}" data-value="-30" aria-label="${esc(this._t("earlier"))}">−30</button>
+          <button type="button" class="shift" data-action="shift" data-group="${gid}" data-value="30" aria-label="${esc(this._t("later"))}">+30</button>` : ""}
+          <button type="button" class="filled resume" data-action="resume" data-group="${gid}" aria-label="${esc(this._t("resume_now"))}" title="${esc(this._t("resume_now"))}">${svg(ICONS.resume, 20)}</button>
+        </div>
+        ${note ? `<span class="small note">${esc(note)}</span>` : ""}
+      </div>`;
     } else if (status === "disabled") {
       banner += `<div class="banner"><span>${esc(this._t("disabled_text"))}</span><button type="button" class="outlined" data-action="programming-on" data-group="${esc(g.group)}">${esc(this._t("reactivate"))}</button></div>`;
     } else if (status === "no_program") {
@@ -623,7 +655,7 @@ class SplitSchedulerCard extends HTMLElement {
             ${adapted ? `<span class="muted small">${esc(this._t("profile_target").replace("{t}", this._fmt(pa.consigne_profil)))}</span>` : ""}</div>
           <div class="col right">
             ${profile ? `<span class="pchip" style="background:${mix(color, 20)};color:${mix(color, 55, "var(--primary-text-color)")}"><i style="background:${color}"></i>${esc(profile.name)}</span>` : ""}
-            <span class="muted small">${esc(hvac[mode] || "")}</span>
+            <span class="muted small">${esc([hvac[mode] || "", ["eco", "boost"].includes(attrs.preset_mode) ? I18N[lang(this._hass)].presets[attrs.preset_mode] : ""].filter(Boolean).join(" · "))}</span>
           </div>
         </div>
         ${ambient || extra || outdoorChip ? `<div class="chips">${ambient}${outdoorChip}${extra}</div>` : ""}
@@ -725,7 +757,21 @@ class SplitSchedulerCard extends HTMLElement {
         ? `${esc(this._t("next"))} : <strong>${esc(this._time(nextIso))} ${esc(nextProfile || "")}</strong>`
         : esc(this._t("no_change"));
       rows.push(`<div class="row between small muted"><span>${esc(this._t("today"))}</span><span>${next}</span></div>`);
-      rows.push(`<div class="bar">${bars}<b style="left:${nowPct}%"></b></div>`);
+      let hatch = "";
+      const pa = this._state(g.info.entities.profile)?.attributes || {};
+      if (pa.derogation && pa.derogation_depuis && pa.reprise) {
+        const toPct = (iso) => {
+          const t = new Date(iso).getTime();
+          const z = zonedNow(this._info.time_zone, new Date(t));
+          const sameDay = z.day === now.day;
+          if (sameDay) return (z.minutes / 1440) * 100;
+          return t < Date.now() ? 0 : 100;
+        };
+        const from = toPct(pa.derogation_depuis);
+        const to = toPct(pa.reprise);
+        if (to > from) hatch = `<i class="hatch" style="left:${from.toFixed(2)}%;width:${(to - from).toFixed(2)}%"></i>`;
+      }
+      rows.push(`<div class="bar">${bars}${hatch}<b style="left:${nowPct}%"></b></div>`);
     }
     const history = this._history[g.group];
     const legend = [];
@@ -925,6 +971,14 @@ class SplitSchedulerCard extends HTMLElement {
       if (manual.includes("fan_mode") && (a.fan_modes || []).length) {
         rows.push(this._selectRow(`fan-${g.group}`, this._t("fan"), "fan_mode", g.group, a.fan_modes, a.fan_mode));
       }
+      const offered = a.preset_modes || [];
+      // « Normal » : home chez Faikout (none seulement s'il n'y a pas home)
+      const presets = ["home", "none", "eco", "boost"].filter((p) => offered.includes(p) && !(p === "none" && offered.includes("home")));
+      if (manual.includes("preset_mode") && presets.length > 1) {
+        const labels = I18N[lang(this._hass)].presets;
+        const buttons = presets.map((p) => `<button type="button" class="${p === a.preset_mode ? "on" : ""}" aria-pressed="${p === a.preset_mode}" data-action="preset_mode" data-group="${esc(g.group)}" data-value="${esc(p)}">${esc(labels[p] || p)}</button>`).join("");
+        rows.push(`<div class="col gap8"><span>${esc(this._t("preset"))}</span><div class="seg full">${buttons}</div></div>`);
+      }
       if (manual.includes("swing_mode") && (a.swing_modes || []).length) {
         rows.push(`<div class="row between"><span>${esc(this._t("swing"))}</span>${this._segmented(a.swing_modes, a.swing_mode, "swing_mode", g.group)}</div>`);
       }
@@ -1011,6 +1065,12 @@ class SplitSchedulerCard extends HTMLElement {
         break;
       case "swing_mode":
         this._manual(group, { swing_mode: value });
+        break;
+      case "preset_mode":
+        this._manual(group, { preset_mode: value });
+        break;
+      case "shift":
+        this._call(this._hass.callWS({ type: "split_scheduler/override_shift", group_id: group, minutes: Number(value) }));
         break;
       default:
     }
@@ -1473,6 +1533,15 @@ const CARD_CSS = `
   .banner { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 12px; background: var(--secondary-background-color, #f1f3f4); font-size: 13.5px; line-height: 19px; }
   .banner span { flex: 1; }
   .banner.warn { background: ${mix("var(--warning-color, #ffa000)", 16)}; }
+  .banner.compact { flex-direction: column; align-items: stretch; gap: 2px; padding: 6px 6px 6px 12px; }
+  .banner.compact .row { gap: 6px; }
+  .banner.compact span { flex: none; }
+  .banner.compact .when { flex: 1; display: flex; align-items: baseline; gap: 6px; white-space: nowrap; }
+  .banner.compact .when strong { font-size: 18px; font-weight: 500; }
+  .banner.compact .note { color: var(--secondary-text-color); }
+  .banner.compact .resume { width: 40px; min-height: 40px; padding: 0; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .shift { width: 46px; flex-shrink: 0; min-height: 40px; border-radius: 20px; border: 1px solid ${mix("var(--warning-color, #ffa000)", 70, "var(--primary-text-color)")}; background: var(--card-background-color, #fff); font-weight: 500; font-size: 13.5px; }
+  .bar .hatch { position: absolute; top: 0; bottom: 0; background: repeating-linear-gradient(135deg, rgba(0,0,0,.35) 0 3px, transparent 3px 7px); }
   .timeline { display: flex; flex-direction: column; gap: 5px; }
   .bar { position: relative; display: flex; height: 12px; border-radius: 6px; overflow: hidden; }
   .bar b { position: absolute; top: 0; bottom: 0; width: 3px; margin-left: -1px; background: var(--primary-text-color); border-radius: 2px; }
@@ -1634,7 +1703,7 @@ class SplitSchedulerCardEditor extends HTMLElement {
       root.append(p);
     }
     const names = Object.fromEntries((this._info?.groups || []).map((g) => [g.id, g.name]));
-    const manualOptions = ["temperature", "fan_mode", "swing_mode", "hvac_mode"].map((v) => ({ value: v, label: this._t(`m_${v}`) }));
+    const manualOptions = ["temperature", "fan_mode", "swing_mode", "preset_mode", "hvac_mode"].map((v) => ({ value: v, label: this._t(`m_${v}`) }));
     const compressorOptions = ["avg_24h", "avg_profile"].map((v) => ({ value: v, label: this._t(`o_${v}`) }));
     const chartOptions = ["ambient", "setpoint", "outdoor"].map((v) => ({ value: v, label: this._t(`ch_${v}`) }));
     const infoById = Object.fromEntries((this._info?.groups || []).map((g) => [g.id, g]));

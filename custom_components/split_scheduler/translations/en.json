@@ -90,12 +90,14 @@
           "fan_mode": "Fan speed",
           "swing_mode": "Swing (vertical)",
           "swing_horizontal_mode": "Horizontal swing",
-          "outdoor_max_delta": "Maximum gap to outdoor"
+          "outdoor_max_delta": "Maximum gap to outdoor",
+          "preset_mode": "Split preset"
         },
         "data_description": {
           "fan_mode": "Values offered by your splits; you can also type one.",
           "temperature": "Ignored in Off and Fan only modes.",
-          "outdoor_max_delta": "Cooling: the target never goes more than this gap below the outdoor temperature (1 h average); e.g. 26 °C with a 10 °C gap gives 29 °C when it is 39 °C outside. Heating: the target never goes more than this gap above it. Empty: no adaptation."
+          "outdoor_max_delta": "Cooling: the target never goes more than this gap below the outdoor temperature (1 h average); e.g. 26 °C with a 10 °C gap gives 29 °C when it is 39 °C outside. Heating: the target never goes more than this gap above it. Empty: no adaptation.",
+          "preset_mode": "Values offered by your splits. ECONO limits consumption (and power); Powerful runs the unit at maximum. They exclude each other; Normal turns both off. A split without the value ignores it. Empty: preset unchanged."
         }
       },
       "profile_edit_pick": {
@@ -114,12 +116,14 @@
           "fan_mode": "Fan speed",
           "swing_mode": "Swing (vertical)",
           "swing_horizontal_mode": "Horizontal swing",
-          "outdoor_max_delta": "Maximum gap to outdoor"
+          "outdoor_max_delta": "Maximum gap to outdoor",
+          "preset_mode": "Split preset"
         },
         "data_description": {
           "fan_mode": "Values offered by your splits; you can also type one.",
           "temperature": "Ignored in Off and Fan only modes.",
-          "outdoor_max_delta": "Cooling: the target never goes more than this gap below the outdoor temperature (1 h average); e.g. 26 °C with a 10 °C gap gives 29 °C when it is 39 °C outside. Heating: the target never goes more than this gap above it. Empty: no adaptation."
+          "outdoor_max_delta": "Cooling: the target never goes more than this gap below the outdoor temperature (1 h average); e.g. 26 °C with a 10 °C gap gives 29 °C when it is 39 °C outside. Heating: the target never goes more than this gap above it. Empty: no adaptation.",
+          "preset_mode": "Values offered by your splits. ECONO limits consumption (and power); Powerful runs the unit at maximum. They exclude each other; Normal turns both off. A split without the value ignores it. Empty: preset unchanged."
         }
       },
       "profile_delete": {
@@ -296,6 +300,14 @@
         "fri": "Friday",
         "sat": "Saturday",
         "sun": "Sunday"
+      }
+    },
+    "preset_mode": {
+      "options": {
+        "home": "Normal",
+        "none": "Normal",
+        "eco": "ECONO",
+        "boost": "Powerful"
       }
     }
   },

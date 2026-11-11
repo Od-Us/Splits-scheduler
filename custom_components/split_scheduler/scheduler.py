@@ -25,6 +25,7 @@ from homeassistant.util import dt as dt_util
 
 from .const import (
     ATTR_FAN_MODE,
+    ATTR_PRESET_MODE,
     ATTR_HVAC_MODE,
     ATTR_SWING_HORIZONTAL_MODE,
     ATTR_SWING_MODE,
@@ -73,6 +74,7 @@ _MODE_SETTINGS = (
         "swing_horizontal_modes",
         "set_swing_horizontal_mode",
     ),
+    (ATTR_PRESET_MODE, "preset_mode", "preset_modes", "set_preset_mode"),
 )
 
 
@@ -97,6 +99,9 @@ class GroupState:
     target_changed_at: datetime | None = None
     # Réglage fait à la main (carte, télécommande) : plus d'adaptation jusqu'au créneau suivant
     hand_set: bool = False
+    # Dérogation : début, et heure de reprise choisie (None : prochain créneau)
+    override_since: datetime | None = None
+    override_until: datetime | None = None
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -114,6 +119,8 @@ class GroupState:
                 self.target_changed_at.isoformat() if self.target_changed_at else None
             ),
             "hand_set": self.hand_set,
+            "override_since": self.override_since.isoformat() if self.override_since else None,
+            "override_until": self.override_until.isoformat() if self.override_until else None,
         }
 
 
@@ -160,6 +167,8 @@ class SplitScheduler:
                 effective_target=data.get("effective_target"),
                 target_changed_at=_parse(data.get("target_changed_at")),
                 hand_set=data.get("hand_set", False),
+                override_since=_parse(data.get("override_since")),
+                override_until=_parse(data.get("override_until")),
             )
             if self.groups[gid].get(CONF_COMPRESSOR):
                 stored_log = data.get("compressor")
@@ -477,6 +486,22 @@ class SplitScheduler:
         state.scheduled_profile_id = current.profile_id if current else None
         state.next_change = state.next_profile_id = None
 
+        until = state.override_until
+        if state.enabled and state.override and until is not None:
+            if now < until:
+                # Dérogation à durée choisie : les créneaux d'ici là sont ignorés.
+                at_resume = current_occurrence(program, dt_util.as_local(until))
+                state.next_change = until
+                state.next_profile_id = at_resume.profile_id if at_resume else None
+                self._timers[gid] = async_track_point_in_time(
+                    self.hass, self._make_timer_action(gid, until), until
+                )
+                self._changed()
+                return
+            # Heure de reprise atteinte : retour au programme
+            state.override_until = None
+            force = True
+
         if state.enabled:
             if current is not None:
                 key = f"{state.planning_id}|{current.start.isoformat()}"
@@ -485,6 +510,7 @@ class SplitScheduler:
                     await self._async_apply(gid, current.profile_id, manual=False)
             elif force:
                 state.override = False
+                state.override_since = state.override_until = None
             if upcoming is not None:
                 state.next_change = upcoming.start
                 state.next_profile_id = upcoming.profile_id
@@ -500,6 +526,52 @@ class SplitScheduler:
             await self.async_refresh_group(gid, now=max(dt_util.now(), target))
 
         return _action
+
+    def resume_at(self, gid: str) -> datetime | None:
+        """Heure de reprise d'une dérogation : choisie, sinon le prochain créneau."""
+        state = self.states[gid]
+        if not state.override:
+            return None
+        if state.override_until is not None:
+            return state.override_until
+        upcoming = next_occurrence(self.program(gid, state.planning_id), dt_util.now())
+        return upcoming.start if upcoming else None
+
+    async def async_shift_override(self, gid: str, minutes: int) -> datetime | None:
+        """Avance ou recule l'heure de reprise (entre 30 min et 24 h à partir de maintenant)."""
+        state = self.states[gid]
+        base = self.resume_at(gid)
+        if base is None:
+            return None
+        now = dt_util.utcnow()
+        wanted = dt_util.as_utc(base) + timedelta(minutes=minutes)
+        state.override_until = min(max(wanted, now + timedelta(minutes=30)), now + timedelta(hours=24))
+        await self.async_refresh_group(gid)
+        return state.override_until
+
+    def override_info(self, gid: str) -> dict[str, Any]:
+        """Dérogation en cours : début, reprise, profil repris, créneau ignoré."""
+        state = self.states[gid]
+        resume = self.resume_at(gid)
+        info: dict[str, Any] = {
+            "derogation_depuis": state.override_since.isoformat() if state.override_since else None,
+            "reprise": resume.isoformat() if resume else None,
+            "reprise_choisie": state.override_until is not None,
+            "reprise_profil": None,
+            "creneau_ignore": None,
+        }
+        if resume is None:
+            return info
+        program = self.program(gid, state.planning_id)
+        at_resume = current_occurrence(program, dt_util.as_local(resume))
+        info["reprise_profil"] = self.profile_name(at_resume.profile_id) if at_resume else None
+        upcoming = next_occurrence(program, dt_util.now())
+        if upcoming is not None and upcoming.start < resume:
+            info["creneau_ignore"] = {
+                "heure": upcoming.start.isoformat(),
+                "profil": self.profile_name(upcoming.profile_id),
+            }
+        return info
 
     async def async_select_profile(self, gid: str, profile_id: str) -> None:
         """Choix manuel d'un profil : il vaut jusqu'au prochain créneau."""
@@ -537,6 +609,8 @@ class SplitScheduler:
         state = self.states[gid]
         state.applied_at = dt_util.utcnow()  # nos propres commandes : pas de détection
         if state.enabled and state.active_profile_id is not None:
+            if not state.override:
+                state.override_since = dt_util.utcnow()
             state.override = True
             state.hand_set = True
         _LOGGER.info("Groupe « %s » : réglage manuel %s", self.groups[gid]["name"], settings)
@@ -561,6 +635,10 @@ class SplitScheduler:
         if profile_id != state.active_profile_id or state.profile_changed_at is None:
             state.profile_changed_at = dt_util.utcnow()
         state.active_profile_id = profile_id
+        if manual and not state.override:
+            state.override_since = dt_util.utcnow()
+        if not manual:
+            state.override_since = state.override_until = None
         state.override = manual
         state.hand_set = False
         state.applied_at = dt_util.utcnow()
@@ -674,6 +752,7 @@ class SplitScheduler:
                     group["name"],
                     entity_id,
                 )
+                state.override_since = dt_util.utcnow()
                 state.override = True
                 state.hand_set = True
                 self._changed()
@@ -698,6 +777,8 @@ def _deviates(state: State, profile: dict) -> bool:
         return True
     for setting, attr, choices, _ in _MODE_SETTINGS:
         value = profile.get(setting)
+        if setting == ATTR_PRESET_MODE and (value == "boost" or attrs.get(attr) == "boost"):
+            continue  # Powerful s'arrête de lui-même au bout d'un moment : pas une dérogation
         if value is not None and value in attrs.get(choices, []) and attrs.get(attr) != value:
             return True
     return False

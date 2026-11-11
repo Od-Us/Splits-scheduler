@@ -65,6 +65,12 @@ Plannings fournis : *Normal*, *Vacances*, *Absence prolongée* (vides au départ
 Sur la carte de l'intégration, cliquer sur **Configurer**. Un menu propose :
 
 - **Groupes de splits** : nom et thermostats du groupe.
+- **Préréglage du split** (dans chaque profil) : *Ne pas modifier*, *Normal*,
+  *ECONO* ou *Powerful*, selon ce qu'annoncent les splits (préréglages `home`,
+  `eco`, `boost` de Faikout). ECONO limite la consommation (et la puissance),
+  Powerful pousse l'appareil au maximum ; les deux s'excluent et *Normal* les
+  coupe. Un split sans la valeur l'ignore. Powerful s'arrêtant de lui-même au
+  bout d'un moment, son arrêt n'est pas pris pour une dérogation.
 - **Profils de fonctionnement** : un champ laissé vide n'est *pas modifié* sur
   les splits. Par exemple, un profil qui ne fixe que la consigne garde le mode
   en cours. Les vitesses de ventilateur et les oscillations proposées sont
@@ -125,6 +131,14 @@ création des entités ; ils se retrouvent dans la page de l'appareil.
 
 ## Comportement en détail
 
+- **Durée d'une dérogation** : par défaut (et pour un changement fait à la
+  télécommande), jusqu'au prochain créneau. Sur la carte, les boutons **−30** et
+  **+30** du bandeau de dérogation avancent ou reculent l'heure de reprise
+  (entre 30 minutes et 24 heures à partir de maintenant). La durée choisie
+  l'emporte : un créneau passé pendant la dérogation est ignoré, et à l'heure de
+  reprise le profil prévu à ce moment est appliqué. L'heure de reprise survit à
+  un redémarrage ; attributs `reprise`, `reprise_profil`, `creneau_ignore`,
+  `derogation_depuis` sur le sélecteur de profil.
 - **Réglage manuel** : si un split s'écarte du profil appliqué (mode,
   consigne à plus de 0,3 °C près, ventilateur, oscillation) plus de 2 minutes
   après l'envoi, le groupe passe en *Dérogation*. Rien n'est réimposé avant le
