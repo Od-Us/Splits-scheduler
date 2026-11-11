@@ -20,7 +20,7 @@
  *       chart: [ambient, setpoint, outdoor]  # courbes du jour (au choix)
  */
 
-const CARD_VERSION = "1.6.0";
+const CARD_VERSION = "1.6.1";
 const ICON_URL = new URL("icon.png", import.meta.url).href;
 
 const GROUP_DEFAULTS = {
@@ -617,8 +617,8 @@ class SplitSchedulerCard extends HTMLElement {
       banner += `<div class="banner warn compact">
         <div class="row">
           <span class="when"><span class="small">${esc(this._t("resume_at"))}</span> <strong>${resume ? esc(this._time(resume)) : "–"}</strong></span>
-          ${resume ? `<button type="button" class="shift" data-action="shift" data-group="${gid}" data-value="-30" aria-label="${esc(this._t("earlier"))}">−30</button>
-          <button type="button" class="shift" data-action="shift" data-group="${gid}" data-value="30" aria-label="${esc(this._t("later"))}">+30</button>` : ""}
+          ${resume ? `<button type="button" class="shift" data-action="shift" data-group="${gid}" data-value="-30" aria-label="${esc(this._t("earlier"))}">−30min</button>
+          <button type="button" class="shift" data-action="shift" data-group="${gid}" data-value="30" aria-label="${esc(this._t("later"))}">+30min</button>` : ""}
           <button type="button" class="filled resume" data-action="resume" data-group="${gid}" aria-label="${esc(this._t("resume_now"))}" title="${esc(this._t("resume_now"))}">${svg(ICONS.resume, 20)}</button>
         </div>
         ${note ? `<span class="small note">${esc(note)}</span>` : ""}
@@ -1534,13 +1534,13 @@ const CARD_CSS = `
   .banner span { flex: 1; }
   .banner.warn { background: ${mix("var(--warning-color, #ffa000)", 16)}; }
   .banner.compact { flex-direction: column; align-items: stretch; gap: 2px; padding: 6px 6px 6px 12px; }
-  .banner.compact .row { gap: 6px; }
+  .banner.compact .row { gap: 5px; }
   .banner.compact span { flex: none; }
-  .banner.compact .when { flex: 1; display: flex; align-items: baseline; gap: 6px; white-space: nowrap; }
+  .banner.compact .when { flex: 1; min-width: 0; display: flex; align-items: baseline; gap: 5px; white-space: nowrap; }
   .banner.compact .when strong { font-size: 18px; font-weight: 500; }
   .banner.compact .note { color: var(--secondary-text-color); }
   .banner.compact .resume { width: 40px; min-height: 40px; padding: 0; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
-  .shift { width: 46px; flex-shrink: 0; min-height: 40px; border-radius: 20px; border: 1px solid ${mix("var(--warning-color, #ffa000)", 70, "var(--primary-text-color)")}; background: var(--card-background-color, #fff); font-weight: 500; font-size: 13.5px; }
+  .shift { padding: 0 7px; flex-shrink: 0; white-space: nowrap; min-height: 40px; border-radius: 20px; border: 1px solid ${mix("var(--warning-color, #ffa000)", 70, "var(--primary-text-color)")}; background: var(--card-background-color, #fff); font-weight: 500; font-size: 13px; }
   .bar .hatch { position: absolute; top: 0; bottom: 0; background: repeating-linear-gradient(135deg, rgba(0,0,0,.35) 0 3px, transparent 3px 7px); }
   .timeline { display: flex; flex-direction: column; gap: 5px; }
   .bar { position: relative; display: flex; height: 12px; border-radius: 6px; overflow: hidden; }

@@ -132,8 +132,8 @@ création des entités ; ils se retrouvent dans la page de l'appareil.
 ## Comportement en détail
 
 - **Durée d'une dérogation** : par défaut (et pour un changement fait à la
-  télécommande), jusqu'au prochain créneau. Sur la carte, les boutons **−30** et
-  **+30** du bandeau de dérogation avancent ou reculent l'heure de reprise
+  télécommande), jusqu'au prochain créneau. Sur la carte, les boutons **−30min** et
+  **+30min** du bandeau de dérogation avancent ou reculent l'heure de reprise
   (entre 30 minutes et 24 heures à partir de maintenant). La durée choisie
   l'emporte : un créneau passé pendant la dérogation est ignoré, et à l'heure de
   reprise le profil prévu à ce moment est appliqué. L'heure de reprise survit à
