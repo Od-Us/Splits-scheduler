@@ -20,7 +20,7 @@
  *       chart: [ambient, setpoint, outdoor]  # courbes du jour (au choix)
  */
 
-const CARD_VERSION = "1.4.0";
+const CARD_VERSION = "1.5.0";
 const ICON_URL = new URL("icon.png", import.meta.url).href;
 
 const GROUP_DEFAULTS = {
@@ -99,14 +99,14 @@ const I18N = {
     c_24h: "Compresseur (24 h)",
     c_profile: "Compresseur depuis {profile}",
     c_unit: "dém./h",
-    c_detail: "{starts} démarrage(s) en {hours} h",
+    c_detail: "{n} démarrage en {hours} h|{n} démarrages en {hours} h",
     e_compressor: "Démarrages du compresseur par heure (compresseur commun à tous les splits du groupe)",
     e_compressor_missing: "Aucun capteur de compresseur pour ce groupe : indiquez-le dans la configuration du groupe (Paramètres › Programmation des splits › Configurer › Groupes).",
     e_compressor_ok: "Tous les splits du groupe sont considérés comme reliés au même compresseur.",
     o_avg_24h: "Moyenne sur les 24 dernières heures",
     o_avg_profile: "Moyenne depuis le dernier changement de profil",
     t_compressor: "Compresseur",
-    t_starts: "{n} démarrage(s)",
+    t_starts: "{n} démarrage|{n} démarrages",
     t_running: "En marche",
     t_ambient: "Ambiance",
     t_setpoint: "Consigne",
@@ -124,6 +124,27 @@ const I18N = {
     profile_target: "Profil : {t} °C",
     adapt_cool: "Forte chaleur : consigne relevée à {e} °C (extérieur {o} °C − écart max {d} °C). Elle redescend vers {p} °C quand l'extérieur baisse.",
     adapt_heat: "Grand froid : consigne abaissée à {e} °C (extérieur {o} °C + écart max {d} °C). Elle remonte vers {p} °C quand l'extérieur se radoucit.",
+    n_splits: "{n} split|{n} splits",
+    unreachable: "Injoignable depuis {t}",
+    measured: "mesurée",
+    open_split: "Ouvrir la page de l'appareil",
+    history: "{g} — historique",
+    p_day: "Jour", p_3d: "3 jours", p_week: "Semaine",
+    prev: "Période précédente", next_p: "Période suivante",
+    close: "Fermer",
+    available_since: "Historique disponible depuis le {d}",
+    loading: "Chargement de l'historique…",
+    no_data: "Aucune donnée sur cette période.",
+    no_data_at: "Aucune donnée à cet instant.",
+    profiles_band: "Profils",
+    compressor_band: "Compresseur",
+    starts_period: "{n} démarrage sur la période · {r} démarrage/h en moyenne|{n} démarrages sur la période · {r} démarrage/h en moyenne",
+    running: "en marche",
+    stopped: "à l'arrêt",
+    now_label: "maintenant",
+    touch_hint: "Touchez la courbe pour déplacer le curseur",
+    adapted_short: "adaptée",
+    open_detail: "Ouvrir la vue détaillée",
   },
   en: {
     card_name: "Split scheduler",
@@ -180,14 +201,14 @@ const I18N = {
     c_24h: "Compressor (24 h)",
     c_profile: "Compressor since {profile}",
     c_unit: "starts/h",
-    c_detail: "{starts} start(s) in {hours} h",
+    c_detail: "{n} start in {hours} h|{n} starts in {hours} h",
     e_compressor: "Compressor starts per hour (compressor shared by all splits of the group)",
     e_compressor_missing: "No compressor sensor for this group: set it in the group configuration (Settings › Split scheduler › Configure › Groups).",
     e_compressor_ok: "All splits of the group are assumed to share the same compressor.",
     o_avg_24h: "Average over the last 24 hours",
     o_avg_profile: "Average since the last profile change",
     t_compressor: "Compressor",
-    t_starts: "{n} start(s)",
+    t_starts: "{n} start|{n} starts",
     t_running: "Running",
     t_ambient: "Room",
     t_setpoint: "Target",
@@ -205,6 +226,27 @@ const I18N = {
     profile_target: "Profile: {t} °C",
     adapt_cool: "Heatwave: target raised to {e} °C (outdoor {o} °C − max gap {d} °C). It goes back to {p} °C as the outdoor temperature drops.",
     adapt_heat: "Severe cold: target lowered to {e} °C (outdoor {o} °C + max gap {d} °C). It goes back to {p} °C as it gets milder.",
+    n_splits: "{n} split|{n} splits",
+    unreachable: "Unreachable since {t}",
+    measured: "measured",
+    open_split: "Open the device page",
+    history: "{g} — history",
+    p_day: "Day", p_3d: "3 days", p_week: "Week",
+    prev: "Previous period", next_p: "Next period",
+    close: "Close",
+    available_since: "History available since {d}",
+    loading: "Loading history…",
+    no_data: "No data for this period.",
+    no_data_at: "No data at this time.",
+    profiles_band: "Profiles",
+    compressor_band: "Compressor",
+    starts_period: "{n} start in the period · {r} starts/h on average|{n} starts in the period · {r} starts/h on average",
+    running: "running",
+    stopped: "stopped",
+    now_label: "now",
+    touch_hint: "Touch the chart to move the cursor",
+    adapted_short: "adapted",
+    open_detail: "Open the detailed view",
   },
 };
 
@@ -224,6 +266,10 @@ const ICONS = {
   gauge: "M4 16a8 8 0 1 1 16 0M12 16l4-5",
   down: "M6 9l6 6 6-6",
   up: "M6 15l6-6 6 6",
+  ext: "M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5",
+  left: "M15 6l-6 6 6 6",
+  right: "M9 6l6 6-6 6",
+  close: "M6 6l12 12M18 6L6 18",
   wave: "M2 12c2-6 4-6 5 0s3 6 5 0 3-6 5 0 3 6 5 0",
   sun: "M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8zM12 2v2M12 20v2M2 12h2M20 12h2M5 5l1.5 1.5M17.5 17.5 19 19M5 19l1.5-1.5M17.5 6.5 19 5",
   adapt_down: "M12 3v10M8 9l4 4 4-4M5 21h14",
@@ -233,6 +279,12 @@ const ICONS = {
 
 function lang(hass) {
   return (hass?.locale?.language || hass?.language || "fr").startsWith("fr") ? "fr" : "en";
+}
+
+/** « un|plusieurs » selon n, avec {n} remplacé. */
+function plural(text, n) {
+  const [one, many] = String(text).split("|");
+  return ((n === 1 || many === undefined ? one : many) || "").replaceAll("{n}", n);
 }
 
 function esc(value) {
@@ -294,6 +346,7 @@ class SplitSchedulerCard extends HTMLElement {
     super();
     this.attachShadow({ mode: "open" });
     this._expanded = new Set();
+    this._splitsOpen = new Set();
     this._history = {};
     this._historyLoading = new Set();
     this._historyStamp = 0;
@@ -301,6 +354,12 @@ class SplitSchedulerCard extends HTMLElement {
     this._timers = {};
     this._signature = "";
     this.shadowRoot.addEventListener("click", (ev) => this._onClick(ev));
+    this.shadowRoot.addEventListener("keydown", (ev) => {
+      if ((ev.key === "Enter" || ev.key === " ") && ev.target.matches?.("[role=button][data-action]")) {
+        ev.preventDefault();
+        this._onClick(ev);
+      }
+    });
     this.shadowRoot.addEventListener("change", (ev) => this._onChange(ev));
   }
 
@@ -417,7 +476,7 @@ class SplitSchedulerCard extends HTMLElement {
       const s = this._hass.states[id];
       return s ? `${id}:${s.last_updated}` : id;
     });
-    return [JSON.stringify(this._config), this._error, JSON.stringify(this._pending), [...this._expanded].join(), lang(this._hass), this._historyStamp, ...parts].join("|");
+    return [JSON.stringify(this._config), this._error, JSON.stringify(this._pending), [...this._expanded].join(), [...this._splitsOpen].join(), lang(this._hass), this._historyStamp, ...parts].join("|");
   }
 
   _render() {
@@ -552,9 +611,12 @@ class SplitSchedulerCard extends HTMLElement {
     return `
       <article class="group" aria-label="${esc(g.info.name)}">
         <div class="row between">
-          <h2>${esc(g.info.name)}</h2>
+          <button type="button" class="gname" aria-expanded="${this._splitsOpen.has(g.group)}" data-action="splits" data-group="${esc(g.group)}">
+            <h2>${esc(g.info.name)}</h2><span class="muted small">${esc(plural(this._t("n_splits"), g.info.climates.length))}</span>${svg(this._splitsOpen.has(g.group) ? ICONS.up : ICONS.down, 16)}
+          </button>
           <span class="status" style="background:${mix(statusColor, 18)};color:${mix(statusColor, 70, "var(--primary-text-color)")}">${svg(statusIcon, 14)}${esc(I18N[lang(this._hass)].status[status] || status)}</span>
         </div>
+        ${this._splitsOpen.has(g.group) ? this._renderSplits(g) : ""}
         <div class="row between end">
           <div class="col"><span class="muted small">${esc(this._t("setpoint"))}</span>
             <span class="row bigrow">${big}${adapted ? `<span class="adapted">${svg(pa.consigne_appliquee > pa.consigne_profil ? ICONS.adapt_up : ICONS.adapt_down, 13)}${esc(this._t("adapted"))}</span>` : ""}</span>
@@ -570,6 +632,43 @@ class SplitSchedulerCard extends HTMLElement {
         ${editToggle}
         ${open ? this._renderEdit(g, { profileState, planningState, climate, nextIso }) : ""}
       </article>`;
+  }
+
+  _renderSplits(g) {
+    const hvac = I18N[lang(this._hass)].hvac;
+    const rows = g.info.climates.map((eid) => {
+      const s = this._state(eid);
+      const name = s?.attributes?.friendly_name || eid;
+      let sub;
+      let color = "var(--primary-color)";
+      let warn = false;
+      if (!s || ["unavailable", "unknown"].includes(s.state)) {
+        const since = s?.last_changed ? this._time(s.last_changed) : "?";
+        sub = this._t("unreachable").replace("{t}", since);
+        color = "var(--disabled-color, #9e9e9e)";
+        warn = true;
+      } else {
+        const a = s.attributes;
+        const parts = [hvac[s.state] || s.state];
+        if (a.temperature != null && s.state !== "off") parts.push(`${this._t("setpoint").toLowerCase()} ${this._fmt(a.temperature)} °C`);
+        if (a.current_temperature != null) parts.push(`${this._t("measured")} ${this._fmt(a.current_temperature)} °C`);
+        sub = parts.join(" · ");
+        if (s.state === "off") color = "var(--disabled-color, #9e9e9e)";
+      }
+      return `<button type="button" class="split" data-action="open-split" data-group="${esc(g.group)}" data-value="${esc(eid)}" aria-label="${esc(this._t("open_split"))} : ${esc(name)}">
+        <i style="background:${color}"></i><span class="col"><strong>${esc(name)}</strong><span class="small ${warn ? "err" : "muted"}">${esc(sub)}</span></span>${svg(ICONS.ext, 16)}</button>`;
+    }).join("");
+    return `<div class="splits">${rows}</div>`;
+  }
+
+  _openSplit(g, entityId) {
+    const deviceId = g.info.devices?.[entityId];
+    if (this._hass.user?.is_admin && deviceId) {
+      window.history.pushState(null, "", `/config/devices/device/${deviceId}`);
+      window.dispatchEvent(new CustomEvent("location-changed", { detail: { replace: false } }));
+    } else {
+      this.dispatchEvent(new CustomEvent("hass-more-info", { detail: { entityId }, bubbles: true, composed: true }));
+    }
   }
 
   _chip(icon, label, value) {
@@ -589,7 +688,7 @@ class SplitSchedulerCard extends HTMLElement {
         : this._t("c_profile").replace("{profile}", a.profil || "");
       const value = ["unknown", "unavailable"].includes(s.state) ? "–" : `${this._fmt(s.state)} ${this._t("c_unit")}`;
       const title = a.demarrages !== undefined
-        ? this._t("c_detail").replace("{starts}", a.demarrages).replace("{hours}", this._fmt(a.duree_h)) : "";
+        ? plural(this._t("c_detail"), a.demarrages).replace("{hours}", this._fmt(a.duree_h)) : "";
       chips.push(`<span class="chip" title="${esc(title)}">${svg(ICONS.wave, 16)}${esc(label)} <strong>${esc(value)}</strong></span>`);
     }
     return chips.join("");
@@ -635,14 +734,14 @@ class SplitSchedulerCard extends HTMLElement {
       const blocks = runs.map(([a, b]) => `<i style="left:${a.toFixed(3)}%;width:${Math.max(b - a, 0.15).toFixed(3)}%"></i>`).join("");
       const ticks = starts.map((x) => `<u style="left:${x.toFixed(3)}%"></u>`).join("");
       rows.push(`<div class="cbar" title="${esc(this._t("t_compressor"))}">${blocks}${ticks}<b style="left:${nowPct}%"></b></div>`);
-      legend.push(`<span><i class="lg run"></i>${esc(this._t("t_compressor"))} · ${esc(this._t("t_starts").replace("{n}", starts.length))}</span>`);
+      legend.push(`<span><i class="lg run"></i>${esc(this._t("t_compressor"))} · ${esc(plural(this._t("t_starts"), starts.length))}</span>`);
     }
     if (chart.length) {
       rows.push(this._renderChart(history, chart, nowPct, legend));
     }
     rows.push(`<div class="ticks"><span>0 h</span><span>6 h</span><span>12 h</span><span>18 h</span><span>24 h</span></div>`);
     if (legend.length) rows.push(`<div class="legend">${legend.join("")}</div>`);
-    return `<div class="timeline">${rows.join("")}</div>`;
+    return `<div class="timeline" role="button" tabindex="0" data-action="detail" data-group="${esc(g.group)}" aria-label="${esc(this._t("open_detail"))}">${rows.join("")}</div>`;
   }
 
   /** Marches du compresseur aujourd'hui : périodes [début, fin] et démarrages (en %). */
@@ -865,8 +964,8 @@ class SplitSchedulerCard extends HTMLElement {
   }
 
   _onClick(ev) {
-    const el = ev.target.closest("button[data-action]");
-    if (!el) return;
+    const el = ev.target.closest("[data-action]");
+    if (!el || el.tagName === "SELECT") return;
     const { action, group, value } = el.dataset;
     const g = group ? this._group(group) : null;
     const e = g?.info?.entities || {};
@@ -889,6 +988,18 @@ class SplitSchedulerCard extends HTMLElement {
         break;
       case "programming-toggle":
         this._call(hass.callService("switch", "toggle", { entity_id: e.programming }));
+        break;
+      case "splits":
+        if (this._splitsOpen.has(group)) this._splitsOpen.delete(group);
+        else this._splitsOpen.add(group);
+        this._signature = "";
+        this._render();
+        break;
+      case "open-split":
+        this._openSplit(g, value);
+        break;
+      case "detail":
+        SplitSchedulerHistory.open(this._hass, this._info, g);
         break;
       case "expand":
         if (this._expanded.has(group)) this._expanded.delete(group);
@@ -934,6 +1045,393 @@ class SplitSchedulerCard extends HTMLElement {
     }, 1200);
   }
 }
+
+// ---------------------------------------------------------------------------- vue détaillée
+
+const DAY = 86400000;
+const PERIODS = { day: 1, "3d": 3, week: 7 };
+const HISTORY_DAYS = 10; // historique détaillé conservé par défaut (recorder : purge_keep_days)
+
+/** Valeur en vigueur à l'instant t dans une série [[t, v], ...] triée. */
+function valueAt(series, t) {
+  let lo = 0;
+  let hi = (series?.length || 0) - 1;
+  let found;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    if (series[mid][0] <= t) { found = series[mid][1]; lo = mid + 1; } else hi = mid - 1;
+  }
+  return found;
+}
+
+class SplitSchedulerHistory extends HTMLElement {
+  static open(hass, info, group) {
+    const dialog = document.createElement("split-scheduler-history");
+    dialog._hass = hass;
+    dialog._info = info;
+    dialog._g = group;
+    document.body.append(dialog);
+    return dialog;
+  }
+
+  constructor() {
+    super();
+    this.attachShadow({ mode: "open" });
+    this._period = "day";
+    this._offset = 0;
+    this._show = { ambient: true, setpoint: true, outdoor: true };
+    this._data = null;
+    this._cursor = null;
+    this._onKey = (ev) => { if (ev.key === "Escape") this.close(); };
+  }
+
+  connectedCallback() {
+    document.addEventListener("keydown", this._onKey);
+    this.shadowRoot.addEventListener("click", (ev) => this._onClick(ev));
+    this._load();
+  }
+
+  disconnectedCallback() {
+    document.removeEventListener("keydown", this._onKey);
+  }
+
+  close() {
+    this.remove();
+  }
+
+  _t(key) {
+    return I18N[lang(this._hass)][key] ?? key;
+  }
+
+  _loc() {
+    return this._hass?.locale?.language || this._hass?.language || "fr";
+  }
+
+  _fmt(v, d = 1) {
+    return new Intl.NumberFormat(this._loc(), { minimumFractionDigits: d, maximumFractionDigits: d }).format(v);
+  }
+
+  _range() {
+    const now = Date.now();
+    const z = zonedNow(this._info.time_zone, new Date(now));
+    const todayStart = now - (z.minutes * 60 + new Date(now).getSeconds()) * 1000 - new Date(now).getMilliseconds();
+    const days = PERIODS[this._period];
+    const end = todayStart + DAY - this._offset * days * DAY;
+    return { start: end - days * DAY, end, now, days };
+  }
+
+  _canGoBack() {
+    const { start, now } = this._range();
+    return start > now - HISTORY_DAYS * DAY;
+  }
+
+  async _load() {
+    this._data = null;
+    this._render();
+    const { start, end, now } = this._range();
+    const g = this._g;
+    const climate = g.info.climates[0];
+    const ambientSensor = g.temperature_entity && this._hass.states[g.temperature_entity] ? g.temperature_entity : null;
+    const sensors = [g.info.compressor, ambientSensor, this._info.outdoor].filter(Boolean);
+    const base = {
+      type: "history/history_during_period",
+      start_time: new Date(start).toISOString(),
+      end_time: new Date(Math.min(end, now)).toISOString(),
+      include_start_time_state: true,
+      significant_changes_only: false,
+    };
+    try {
+      const [sensorRows, fullRows] = await Promise.all([
+        sensors.length ? this._hass.callWS({ ...base, entity_ids: sensors, minimal_response: true, no_attributes: true }) : {},
+        this._hass.callWS({ ...base, entity_ids: [climate, g.info.entities.profile].filter(Boolean), minimal_response: false, no_attributes: false }),
+      ]);
+      const time = (e) => Math.max(start, ((e.lu ?? e.lc) || 0) * 1000);
+      const num = (v) => (v === undefined || v === null || v === "" || Number.isNaN(Number(v)) ? null : Number(v));
+      const climateRows = fullRows[climate] || [];
+      const profileRows = fullRows[g.info.entities.profile] || [];
+      let first = Infinity;
+      for (const rows of [...Object.values(sensorRows), ...Object.values(fullRows)]) {
+        if (rows.length) first = Math.min(first, ((rows[0].lu ?? rows[0].lc) || 0) * 1000);
+      }
+      this._data = {
+        first,
+        ambient: ambientSensor
+          ? (sensorRows[ambientSensor] || []).map((e) => [time(e), num(e.s)])
+          : climateRows.map((e) => [time(e), num(e.a?.current_temperature)]),
+        setpoint: climateRows.map((e) => [time(e), e.s === "off" ? null : num(e.a?.temperature)]),
+        outdoor: this._info.outdoor ? (sensorRows[this._info.outdoor] || []).map((e) => [time(e), num(e.s)]) : [],
+        comp: g.info.compressor ? (sensorRows[g.info.compressor] || []).map((e) => [time(e), num(e.s)]) : [],
+        profile: profileRows.map((e) => [time(e), { name: e.s, adapted: e.a?.adaptation_exterieure === true }]),
+      };
+    } catch (err) {
+      this._data = { error: err?.message || String(err) };
+    }
+    this._render();
+  }
+
+  _onClick(ev) {
+    if (ev.target === this.shadowRoot.querySelector(".backdrop")) { this.close(); return; }
+    const el = ev.target.closest("[data-act]");
+    if (!el) return;
+    const { act, value } = el.dataset;
+    if (act === "close") this.close();
+    if (act === "period") { this._period = value; this._offset = 0; this._load(); }
+    if (act === "prev" && this._canGoBack()) { this._offset += 1; this._load(); }
+    if (act === "next" && this._offset > 0) { this._offset -= 1; this._load(); }
+    if (act === "toggle") { this._show[value] = !this._show[value]; this._render(); }
+  }
+
+  _profileColor(name) {
+    return this._info.profiles.find((p) => p.name === name)?.color || "var(--divider-color)";
+  }
+
+  _render() {
+    const { start, end, now, days } = this._range();
+    const g = this._g;
+    const mobile = window.innerWidth < 600;
+    const span = end - start;
+    const pct = (t) => (((Math.min(Math.max(t, start), end) - start) / span) * 100);
+    const last = Math.min(end, now);
+    const date = (t, opts) => new Intl.DateTimeFormat(this._loc(), { timeZone: this._info.time_zone, ...opts }).format(new Date(t));
+    const title = days === 1
+      ? date(start + 1, { weekday: "long", day: "numeric", month: "long" })
+      : `${date(start + 1, { weekday: "short", day: "numeric" })} – ${date(end - 1, { weekday: "short", day: "numeric", month: "short" })}`;
+    const d = this._data;
+
+    let body;
+    if (!d) body = `<div class="msg">${esc(this._t("loading"))}</div>`;
+    else if (d.error) body = `<div class="msg err">${esc(d.error)}</div>`;
+    else body = this._renderBody(d, { start, end, now, last, pct, days, mobile });
+
+    const periods = Object.keys(PERIODS).map((p) => `<button type="button" class="${p === this._period ? "on" : ""}" aria-pressed="${p === this._period}" data-act="period" data-value="${p}">${esc(this._t(`p_${p}`))}</button>`).join("");
+    const toggles = [["ambient", "amb", this._t("t_ambient")], ["setpoint", "set", this._t("t_setpoint")], ...(this._info.outdoor ? [["outdoor", "out", this._t("t_outdoor")]] : [])]
+      .map(([k, cls, label]) => `<button type="button" class="tog ${this._show[k] ? "on" : ""}" aria-pressed="${this._show[k]}" data-act="toggle" data-value="${k}"><i class="lg ${cls}"></i>${esc(label)}</button>`).join("");
+    const since = d && Number.isFinite(d.first) && d.first > start + 60000
+      ? `<span class="muted small">${esc(this._t("available_since").replace("{d}", date(d.first, { day: "numeric", month: "long" })))}</span>` : "";
+
+    this.shadowRoot.innerHTML = `<style>${HISTORY_CSS}</style>
+      <div class="backdrop">
+        <section class="dlg ${mobile ? "mobile" : ""}" role="dialog" aria-modal="true" aria-label="${esc(this._t("history").replace("{g}", g.info.name))}">
+          <header>
+            ${mobile ? `<button type="button" class="icon" data-act="close" aria-label="${esc(this._t("close"))}">${svg(ICONS.left, 22)}</button>` : ""}
+            <h1>${esc(this._t("history").replace("{g}", g.info.name))}</h1>
+            ${mobile ? "" : `<button type="button" class="icon" data-act="close" aria-label="${esc(this._t("close"))}">${svg(ICONS.close, 22)}</button>`}
+          </header>
+          <div class="tools">
+            <div class="seg" role="group">${periods}</div>
+            <div class="nav">
+              <button type="button" class="icon round" data-act="prev" aria-label="${esc(this._t("prev"))}" ${this._canGoBack() ? "" : "disabled"}>${svg(ICONS.left, 18)}</button>
+              <span class="when">${esc(title)}</span>
+              <button type="button" class="icon round" data-act="next" aria-label="${esc(this._t("next_p"))}" ${this._offset > 0 ? "" : "disabled"}>${svg(ICONS.right, 18)}</button>
+            </div>
+            <div class="togs">${toggles}</div>
+            ${since}
+          </div>
+          ${body}
+        </section>
+      </div>`;
+    this.shadowRoot.querySelector("[data-act=close]")?.focus({ preventScroll: true });
+    this._bindCursor({ start, end, last, pct, mobile });
+  }
+
+  _renderBody(d, { start, end, now, last, pct, days, mobile }) {
+    // Profils réellement appliqués
+    const profileBlocks = [];
+    for (let i = 0; i < d.profile.length; i++) {
+      const [t, p] = d.profile[i];
+      const until = i + 1 < d.profile.length ? d.profile[i + 1][0] : last;
+      if (until <= t || ["unknown", "unavailable"].includes(p.name)) continue;
+      profileBlocks.push(`<span title="${esc(p.name)}" style="left:${pct(t).toFixed(3)}%;width:${(pct(until) - pct(t)).toFixed(3)}%;background:${this._profileColor(p.name)}"></span>`);
+    }
+    // Compresseur
+    const runs = [];
+    let on = null;
+    let was = null;
+    let starts = 0;
+    for (const [t, v] of d.comp) {
+      if (v === null) continue;
+      if (v > 0 && on === null) { on = t; if (was === false) starts++; }
+      else if (v <= 0 && on !== null) { runs.push([on, t]); on = null; }
+      was = v > 0;
+    }
+    if (on !== null) runs.push([on, last]);
+    const observedFrom = Number.isFinite(d.first) ? Math.max(start, d.first) : start;
+    const hours = Math.max((last - observedFrom) / 3600000, 1 / 60);
+    const compBlocks = runs.map(([a, b]) => `<i style="left:${pct(a).toFixed(3)}%;width:${Math.max(pct(b) - pct(a), 0.12).toFixed(3)}%"></i>`).join("");
+    const compRow = this._g.info.compressor ? `
+      <span class="lab">${esc(this._t("compressor_band"))}</span><div class="cband">${compBlocks}</div>
+      <span></span><span class="muted small">${esc(plural(this._t("starts_period"), starts).replace("{r}", this._fmt(starts / hours)))}</span>` : "";
+
+    // Courbes
+    const H = mobile ? 250 : 360;
+    const visible = [["ambient", "amb", false], ["setpoint", "set", true], ["outdoor", "out", false]].filter(([k]) => this._show[k] && d[k]?.length);
+    const values = visible.flatMap(([k]) => d[k].map(([, v]) => v)).filter((v) => v !== null);
+    let chart = `<div class="msg">${esc(this._t("no_data"))}</div>`;
+    if (values.length) {
+      let lo = Math.floor(Math.min(...values) - 0.5);
+      let hi = Math.ceil(Math.max(...values) + 0.5);
+      if (hi - lo < 4) { lo -= 2; hi += 2; }
+      const stepY = hi - lo > 16 ? 4 : 2;
+      lo = Math.floor(lo / stepY) * stepY;
+      hi = Math.ceil(hi / stepY) * stepY;
+      const y = (v) => (H - ((v - lo) / (hi - lo)) * H).toFixed(1);
+      const x = (t) => (pct(t) * 10).toFixed(1);
+      const paths = visible.map(([k, cls, step]) => {
+        let path = "";
+        let prev = null;
+        for (const [t, v] of [...d[k], [last, d[k].at(-1)?.[1] ?? null]]) {
+          if (v === null) { prev = null; continue; }
+          if (prev === null) path += `M${x(t)} ${y(v)}`;
+          else if (step) path += `H${x(t)}V${y(v)}`;
+          else path += `L${x(t)} ${y(v)}`;
+          prev = v;
+        }
+        return path ? `<path class="${cls}" d="${path}"></path>` : "";
+      }).join("");
+      const grid = [];
+      const labels = [];
+      for (let v = lo; v <= hi; v += stepY) {
+        grid.push(`<line class="grid" x1="0" x2="1000" y1="${y(v)}" y2="${y(v)}"></line>`);
+        labels.push(`<span style="top:${((1 - (v - lo) / (hi - lo)) * 100).toFixed(2)}%">${v} °C</span>`);
+      }
+      for (let k = 1; k < days; k++) grid.push(`<line class="day" x1="${(k / days * 1000).toFixed(1)}" x2="${(k / days * 1000).toFixed(1)}" y1="0" y2="${H}"></line>`);
+      const nowLine = now < end ? `<line class="now" x1="${x(now)}" x2="${x(now)}" y1="0" y2="${H}"></line>` : "";
+      chart = `
+        <div class="ylabels">${labels.join("")}</div>
+        <div class="plot" style="height:${H}px">
+          <svg viewBox="0 0 1000 ${H}" preserveAspectRatio="none" aria-hidden="true">${grid.join("")}${paths}${nowLine}<line class="cursor" x1="0" x2="0" y1="0" y2="${H}" visibility="hidden"></line></svg>
+          <div class="tip" hidden></div>
+        </div>`;
+    }
+    // Axe du temps
+    const ticks = [];
+    const date = (t, o) => new Intl.DateTimeFormat(this._loc(), { timeZone: this._info.time_zone, ...o }).format(new Date(t));
+    if (days === 1) ["0 h", "6 h", "12 h", "18 h", "24 h"].forEach((l, i) => ticks.push(`<span style="left:${i * 25}%">${l}</span>`));
+    else {
+      for (let k = 0; k < days; k++) {
+        ticks.push(`<span style="left:${(k / days * 100).toFixed(2)}%">${esc(date(start + k * DAY + 3600000, { weekday: "short", day: "numeric" }))}</span>`);
+        if (days <= 3) ticks.push(`<span style="left:${((k + 0.5) / days * 100).toFixed(2)}%">12 h</span>`);
+      }
+    }
+    return `
+      <div class="bands">
+        <span class="lab">${esc(this._t("profiles_band"))}</span><div class="pband">${profileBlocks.join("")}</div>
+        ${compRow}
+      </div>
+      <div class="chartwrap">${chart}</div>
+      <div class="xaxis">${ticks.join("")}</div>
+      ${mobile ? `<div class="panel" hidden></div><span class="muted small center">${esc(this._t("touch_hint"))}</span>` : ""}`;
+  }
+
+  _bindCursor({ start, end, last, pct, mobile }) {
+    const plot = this.shadowRoot.querySelector(".plot");
+    const d = this._data;
+    if (!plot || !d || d.error) return;
+    const line = plot.querySelector(".cursor");
+    const tip = plot.querySelector(".tip");
+    const panel = this.shadowRoot.querySelector(".panel");
+    const time = (t, o) => new Intl.DateTimeFormat(this._loc(), { timeZone: this._info.time_zone, ...o }).format(new Date(t));
+    const show = (clientX) => {
+      const box = plot.getBoundingClientRect();
+      const ratio = Math.min(Math.max((clientX - box.left) / box.width, 0), 1);
+      const t = Math.min(start + ratio * (end - start), last);
+      const x = ((t - start) / (end - start)) * 1000;
+      line.setAttribute("x1", x); line.setAttribute("x2", x); line.setAttribute("visibility", "visible");
+      const p = valueAt(d.profile, t);
+      const c = valueAt(d.comp, t);
+      const row = (cls, label, v) => (v === undefined || v === null ? "" : `<span class="r"><span><i class="lg ${cls}"></i>${esc(label)}</span><strong>${this._fmt(v)} °C</strong></span>`);
+      const html = `
+        <strong class="h">${esc(time(t, { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }))}</strong>
+        ${p ? `<span class="r"><span><i class="dot" style="background:${this._profileColor(p.name)}"></i>${esc(p.name)}${p.adapted ? ` <em>(${esc(this._t("adapted_short"))})</em>` : ""}</span></span>` : ""}
+        ${this._show.setpoint ? row("set", this._t("t_setpoint"), valueAt(d.setpoint, t)) : ""}
+        ${this._show.ambient ? row("amb", this._t("t_ambient"), valueAt(d.ambient, t)) : ""}
+        ${this._show.outdoor && this._info.outdoor ? row("out", this._t("t_outdoor"), valueAt(d.outdoor, t)) : ""}
+        ${this._g.info.compressor && c !== undefined && c !== null ? `<span class="r"><span>${esc(this._t("compressor_band"))}</span><strong>${esc(c > 0 ? `${this._t("running")} · ${Math.round(c)} Hz` : this._t("stopped"))}</strong></span>` : ""}`;
+      const empty = !p && [d.setpoint, d.ambient, d.outdoor, d.comp].every((serie) => valueAt(serie, t) == null);
+      const content = empty ? `${html}<span class="muted">${esc(this._t("no_data_at"))}</span>` : html;
+      if (mobile && panel) { panel.innerHTML = content; panel.hidden = false; }
+      else {
+        tip.innerHTML = content;
+        tip.hidden = false;
+        const left = (ratio * box.width) + 14;
+        tip.style.left = `${left + 260 > box.width ? ratio * box.width - 274 : left}px`;
+      }
+    };
+    plot.addEventListener("pointermove", (ev) => show(ev.clientX));
+    plot.addEventListener("pointerdown", (ev) => show(ev.clientX));
+    plot.addEventListener("pointerleave", () => {
+      if (!mobile) { tip.hidden = true; line.setAttribute("visibility", "hidden"); }
+    });
+  }
+}
+
+const HISTORY_CSS = `
+  :host { position: fixed; inset: 0; z-index: 9999; font-family: var(--ha-font-family-body, Roboto, system-ui, sans-serif); color: var(--primary-text-color); }
+  .backdrop { position: absolute; inset: 0; background: rgba(0,0,0,.5); display: flex; align-items: center; justify-content: center; padding: 24px; box-sizing: border-box; }
+  .dlg { background: var(--card-background-color, #fff); border-radius: 24px; box-shadow: 0 16px 48px rgba(0,0,0,.35); width: min(1180px, 100%); max-height: 100%; overflow: auto; box-sizing: border-box; padding: 18px 24px 22px; display: flex; flex-direction: column; gap: 14px; }
+  .dlg.mobile { position: fixed; inset: 0; width: 100%; height: 100%; max-height: none; border-radius: 0; padding: 10px 16px 16px; }
+  header { display: flex; align-items: center; gap: 8px; }
+  h1 { margin: 0; font-size: 20px; font-weight: 500; flex: 1; }
+  button { font: inherit; color: inherit; cursor: pointer; }
+  .icon { width: 44px; height: 44px; border: 0; border-radius: 22px; background: none; display: inline-flex; align-items: center; justify-content: center; color: var(--primary-text-color); }
+  .icon.round { width: 40px; height: 40px; border: 1px solid var(--divider-color); }
+  .icon:disabled { opacity: .35; cursor: default; }
+  .tools { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 18px; }
+  .dlg.mobile .tools { flex-direction: column; align-items: stretch; }
+  .seg { display: inline-flex; gap: 2px; padding: 3px; border-radius: 20px; background: ${mix("var(--primary-text-color)", 8)}; }
+  .dlg.mobile .seg { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .seg button { min-height: 36px; padding: 0 14px; border: 0; border-radius: 17px; background: none; font-size: 13.5px; }
+  .seg button.on { background: var(--primary-color); color: var(--text-primary-color, #fff); font-weight: 500; }
+  .nav { display: flex; align-items: center; gap: 6px; justify-content: space-between; }
+  .when { min-width: 200px; text-align: center; font-weight: 500; font-size: 14.5px; }
+  .togs { display: flex; flex-wrap: wrap; gap: 8px; }
+  .tog { display: inline-flex; align-items: center; gap: 7px; min-height: 36px; padding: 0 12px; border-radius: 18px; border: 1px solid var(--divider-color); background: none; font-size: 13px; opacity: .55; }
+  .tog.on { opacity: 1; border-color: var(--primary-color); }
+  .muted { color: var(--secondary-text-color); } .small { font-size: 12px; } .center { text-align: center; }
+  .bands { display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: 8px 12px; align-items: center; }
+  .dlg.mobile .bands { grid-template-columns: 1fr; gap: 4px; }
+  .lab { font-size: 12.5px; color: var(--secondary-text-color); }
+  .pband { position: relative; height: 22px; border-radius: 6px; background: ${mix("var(--primary-text-color)", 6)}; overflow: hidden; }
+  .pband span { position: absolute; top: 0; bottom: 0; }
+  .cband { position: relative; height: 14px; border-radius: 5px; background: ${mix("var(--primary-text-color)", 7)}; overflow: hidden; }
+  .cband i { position: absolute; top: 0; bottom: 0; background: ${mix("var(--primary-color)", 45)}; border-left: 2px solid var(--primary-color); box-sizing: border-box; }
+  .chartwrap { display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: 0 12px; }
+  .dlg.mobile .chartwrap { grid-template-columns: 44px minmax(0, 1fr); gap: 0 6px; }
+  .chartwrap > .msg { grid-column: 1 / -1; }
+  .ylabels { position: relative; }
+  .ylabels span { position: absolute; right: 0; transform: translateY(-50%); font-size: 11.5px; color: var(--secondary-text-color); white-space: nowrap; }
+  .plot { position: relative; touch-action: none; cursor: crosshair; }
+  .plot svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+  path { fill: none; stroke-width: 2; vector-effect: non-scaling-stroke; stroke-linejoin: round; }
+  path.amb { stroke: var(--primary-color); stroke-width: 2.2; }
+  path.set { stroke: var(--warning-color, #ffa000); stroke-dasharray: 6 3; }
+  path.out { stroke: var(--error-color, #e53935); stroke-dasharray: 2 3; }
+  line.grid { stroke: var(--divider-color); stroke-width: 1; vector-effect: non-scaling-stroke; }
+  line.day { stroke: var(--secondary-text-color); stroke-width: 1; vector-effect: non-scaling-stroke; opacity: .35; }
+  line.now { stroke: var(--primary-text-color); stroke-width: 1; vector-effect: non-scaling-stroke; stroke-dasharray: 3 3; opacity: .6; }
+  line.cursor { stroke: var(--primary-text-color); stroke-width: 1.2; vector-effect: non-scaling-stroke; opacity: .75; }
+  .tip { position: absolute; top: 10px; width: 260px; box-sizing: border-box; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--divider-color); background: var(--card-background-color, #fff); box-shadow: 0 6px 18px rgba(0,0,0,.18); display: flex; flex-direction: column; gap: 6px; font-size: 13px; pointer-events: none; }
+  .panel { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 12px; padding: 12px 14px; border-radius: 14px; border: 1px solid var(--divider-color); background: ${mix("var(--primary-text-color)", 4)}; font-size: 13px; }
+  .panel .h { grid-column: 1 / -1; }
+  .r { display: flex; justify-content: space-between; gap: 8px; }
+  .panel .r { flex-direction: column; gap: 2px; }
+  .r em { font-style: normal; color: var(--info-color, #039be5); }
+  .h { font-size: 13.5px; }
+  .lg { display: inline-block; width: 14px; height: 0; border-top: 2px solid; margin-right: 6px; vertical-align: middle; }
+  .lg.amb { border-color: var(--primary-color); }
+  .lg.set { border-color: var(--warning-color, #ffa000); border-top-style: dashed; }
+  .lg.out { border-color: var(--error-color, #e53935); border-top-style: dotted; }
+  .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; vertical-align: middle; }
+  .xaxis { position: relative; height: 16px; margin-left: 108px; font-size: 11.5px; color: var(--secondary-text-color); }
+  .dlg.mobile .xaxis { margin-left: 50px; }
+  .xaxis span { position: absolute; transform: translateX(-50%); white-space: nowrap; }
+  .xaxis span:first-child { transform: none; }
+  .xaxis span:last-child:not(:first-child) { transform: translateX(-100%); }
+  .tip[hidden], .panel[hidden] { display: none; }
+  .msg { padding: 40px 0; text-align: center; color: var(--secondary-text-color); }
+  .err { color: var(--error-color, #db4437); }
+  button:focus-visible { outline: 2px solid var(--primary-color); outline-offset: 2px; }
+`;
 
 const CARD_CSS = `
   :host { display: block; }
@@ -994,6 +1492,20 @@ const CARD_CSS = `
   .chart.empty { background: ${mix("var(--primary-text-color)", 4)}; border-radius: 6px; }
   .ylab { position: absolute; left: 0; font-size: 10px; line-height: 1; color: var(--secondary-text-color); background: var(--ha-card-background, var(--card-background-color, #fff)); padding: 0 2px; border-radius: 3px; }
   .ylab.top { top: -2px; } .ylab.bottom { bottom: -2px; }
+  .gname { display: inline-flex; align-items: center; gap: 8px; min-height: 40px; padding: 0 6px 0 0; border: 0; background: none; color: var(--primary-text-color); text-align: left; }
+  .gname svg { color: var(--secondary-text-color); }
+  .splits { display: flex; flex-direction: column; border: 1px solid var(--divider-color); border-radius: 12px; overflow: hidden; box-shadow: 0 4px 14px rgba(0,0,0,.08); }
+  .split { display: flex; align-items: center; gap: 12px; min-height: 56px; padding: 8px 12px; border: 0; border-top: 1px solid var(--divider-color); background: var(--card-background-color, #fff); color: var(--primary-text-color); text-align: left; }
+  .split:first-child { border-top: 0; }
+  .split i { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+  .split .col { flex: 1; min-width: 0; gap: 2px; }
+  .split strong { font-weight: 500; font-size: 14.5px; }
+  .split svg { color: var(--secondary-text-color); flex-shrink: 0; }
+  .split:hover { background: ${mix("var(--primary-color)", 6, "var(--card-background-color, #fff)")}; }
+  .err { color: var(--error-color, #db4437); }
+  .timeline[data-action] { cursor: pointer; border-radius: 8px; }
+  .timeline[data-action]:hover .bar, .timeline[data-action]:hover .chart { filter: brightness(1.04); }
+  .timeline:focus-visible { outline: 2px solid var(--primary-color); outline-offset: 4px; }
   .legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 11.5px; color: var(--secondary-text-color); }
   .legend span { display: inline-flex; align-items: center; gap: 6px; }
   .lg { display: inline-block; width: 14px; height: 0; border-top: 2px solid; }
@@ -1217,6 +1729,7 @@ const EDITOR_CSS = `
 if (!customElements.get("split-scheduler-card")) {
   customElements.define("split-scheduler-card", SplitSchedulerCard);
   customElements.define("split-scheduler-card-editor", SplitSchedulerCardEditor);
+  customElements.define("split-scheduler-history", SplitSchedulerHistory);
   window.customCards = window.customCards || [];
   const l = (navigator.language || "fr").startsWith("fr") ? "fr" : "en";
   window.customCards.push({

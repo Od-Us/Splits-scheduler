@@ -26,6 +26,8 @@ CONF_COMPRESSOR = "compressor"
 CONF_SETTINGS = "settings"
 CONF_OUTDOOR = "outdoor_sensor"
 CONF_MIGRATIONS = "migrations"
+# Profils autorisés dans un type de planning (absent : tous)
+CONF_ALLOWED = "allowed_profiles"
 
 # Réglages possibles d'un profil (absents = « ne pas modifier »)
 ATTR_HVAC_MODE = "hvac_mode"
@@ -219,3 +221,11 @@ def with_positions(options: dict) -> dict:
 
 SUMMER_PROFILES = ("confort_ete", "eco_ete")
 MIGRATION_SUMMER_PROFILES = "summer_profiles"
+
+
+def allowed_profiles(planning: dict, profiles: dict[str, dict]) -> list[str]:
+    """Profils autorisés d'un planning, dans l'ordre des profils (absent : tous)."""
+    allowed = planning.get(CONF_ALLOWED)
+    if allowed is None:
+        return list(profiles)
+    return [pid for pid in profiles if pid in allowed]

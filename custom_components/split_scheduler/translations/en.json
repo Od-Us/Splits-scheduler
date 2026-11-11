@@ -132,7 +132,7 @@
         "title": "Planning types",
         "menu_options": {
           "planning_add": "Add a planning",
-          "planning_edit_pick": "Rename a planning",
+          "planning_edit_pick": "Edit a planning",
           "planning_delete": "Delete plannings",
           "init": "Back"
         }
@@ -141,19 +141,29 @@
         "title": "New planning",
         "data": {
           "name": "Name",
-          "copy_from": "Copy programs from"
+          "copy_from": "Copy programs from",
+          "allowed_profiles": "Allowed profiles"
+        },
+        "description": "Only ticked profiles are offered in this planning's program, on the card and in the profile selector of groups following it.",
+        "data_description": {
+          "allowed_profiles": "A profile used in this planning's program cannot be unticked."
         }
       },
       "planning_edit_pick": {
-        "title": "Rename a planning",
+        "title": "Edit a planning",
         "data": {
           "planning": "Planning"
         }
       },
       "planning_edit": {
-        "title": "Rename planning",
+        "title": "Edit planning",
         "data": {
-          "name": "Name"
+          "name": "Name",
+          "allowed_profiles": "Allowed profiles"
+        },
+        "description": "Only ticked profiles are offered in this planning's program, on the card and in the profile selector of groups following it.",
+        "data_description": {
+          "allowed_profiles": "A profile used in this planning's program cannot be unticked."
         }
       },
       "planning_delete": {
@@ -260,7 +270,9 @@
       "invalid_program": "Invalid input (details above).",
       "time_taken": "A line already exists at this time.",
       "time_required": "Enter a time.",
-      "profile_required": "Choose a profile."
+      "profile_required": "Choose a profile.",
+      "allowed_required": "Tick at least one profile.",
+      "allowed_in_use": "Profile used in this planning's program: {used}. Remove it from those lines first."
     }
   },
   "selector": {

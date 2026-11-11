@@ -39,6 +39,7 @@ from .const import (
     ATTR_SWING_MODE,
     ATTR_TEMPERATURE,
     CONF_CLIMATES,
+    CONF_ALLOWED,
     CONF_COMPRESSOR,
     CONF_OUTDOOR,
     CONF_SETTINGS,
@@ -52,6 +53,7 @@ from .const import (
     PROFILE_SETTINGS,
     TITLE,
     WEEKDAY_KEYS,
+    allowed_profiles,
     default_options,
     describe_profile,
     ordered,
@@ -323,7 +325,12 @@ class SplitSchedulerOptionsFlow(OptionsFlow):
                         )
                 if user_input.get(ATTR_OUTDOOR_DELTA) not in (None, ""):
                     profile[ATTR_OUTDOOR_DELTA] = float(user_input[ATTR_OUTDOOR_DELTA])
-                self.opts[CONF_PROFILES][profile_id or _new_id()] = profile
+                new_id = profile_id or _new_id()
+                if profile_id is None:  # nouveau profil : autorisé dans tous les plannings
+                    for planning in self.opts[CONF_PLANNINGS].values():
+                        if CONF_ALLOWED in planning:
+                            planning[CONF_ALLOWED].append(new_id)
+                self.opts[CONF_PROFILES][new_id] = profile
                 return await self.async_step_profiles()
             values = user_input
 
@@ -404,6 +411,9 @@ class SplitSchedulerOptionsFlow(OptionsFlow):
             else:
                 for pid in selected:
                     self.opts[CONF_PROFILES].pop(pid, None)
+                    for planning in self.opts[CONF_PLANNINGS].values():
+                        if pid in planning.get(CONF_ALLOWED, []):
+                            planning[CONF_ALLOWED].remove(pid)
                 return await self.async_step_profiles()
         return self.async_show_form(
             step_id="profile_delete",
@@ -450,29 +460,68 @@ class SplitSchedulerOptionsFlow(OptionsFlow):
         self, step_id: str, user_input: dict[str, Any] | None, planning_id: str | None
     ) -> ConfigFlowResult:
         errors: dict[str, str] = {}
+        placeholders = {"used": ""}
+        profiles = self.opts[CONF_PROFILES]
         current = self.opts[CONF_PLANNINGS].get(planning_id, {}) if planning_id else {}
         name = current.get("name", "")
+        allowed = allowed_profiles(current, profiles)
         if user_input is not None:
             name = user_input.get("name", "").strip()
             copy_from = user_input.get("copy_from")
+            allowed = [pid for pid in profiles if pid in user_input.get(CONF_ALLOWED, [])]
+            used = {
+                pid
+                for program in current.get(CONF_PROGRAMS, {}).values()
+                for pid in profiles_used(program)
+            }
+            if planning_id is None and copy_from in self.opts[CONF_PLANNINGS]:
+                source = self.opts[CONF_PLANNINGS][copy_from]
+                used = {
+                    pid for program in source.get(CONF_PROGRAMS, {}).values()
+                    for pid in profiles_used(program)
+                }
             if not name:
                 errors["name"] = "name_required"
             elif self._name_taken(CONF_PLANNINGS, name, planning_id):
                 errors["name"] = "name_taken"
+            elif not allowed:
+                errors[CONF_ALLOWED] = "allowed_required"
+            elif missing := sorted(profiles[pid]["name"] for pid in used - set(allowed) if pid in profiles):
+                errors[CONF_ALLOWED] = "allowed_in_use"
+                placeholders["used"] = ", ".join(missing)
             else:
                 if planning_id is None:
                     source = self.opts[CONF_PLANNINGS].get(copy_from, {})
                     self.opts[CONF_PLANNINGS][_new_id()] = {
                         "name": name,
                         CONF_PROGRAMS: copy.deepcopy(source.get(CONF_PROGRAMS, {})),
+                        CONF_ALLOWED: allowed,
                     }
                 else:
                     current["name"] = name
+                    current[CONF_ALLOWED] = allowed
                 return await self.async_step_plannings()
-        fields: dict[Any, Any] = {vol.Required("name", default=name): TextSelector()}
+        fields: dict[Any, Any] = {
+            vol.Required("name", default=name): TextSelector(),
+            vol.Required(CONF_ALLOWED, default=allowed): SelectSelector(
+                SelectSelectorConfig(
+                    options=[
+                        SelectOptionDict(value=pid, label=self._profile_label(pid))
+                        for pid in profiles
+                    ],
+                    multiple=True,
+                    mode=SelectSelectorMode.LIST,
+                )
+            ),
+        }
         if planning_id is None and self.opts[CONF_PLANNINGS]:
             fields[vol.Optional("copy_from")] = _picker(self.opts[CONF_PLANNINGS])
-        return self.async_show_form(step_id=step_id, data_schema=vol.Schema(fields), errors=errors)
+        return self.async_show_form(
+            step_id=step_id,
+            data_schema=vol.Schema(fields),
+            errors=errors,
+            description_placeholders=placeholders,
+        )
 
     async def async_step_planning_delete(
         self, user_input: dict[str, Any] | None = None
@@ -539,6 +588,11 @@ class SplitSchedulerOptionsFlow(OptionsFlow):
             for index, day in enumerate(WEEKDAY_KEYS):
                 try:
                     slots = parse_day(user_input.get(day), profiles)
+                    allowed = allowed_profiles(planning, profiles)
+                    if refused := [profiles[pid]["name"] for _, pid in slots if pid not in allowed]:
+                        raise ProgramError(
+                            f"profil « {refused[0]} » non autorisé dans le planning {planning['name']}"
+                        )
                 except ProgramError as err:
                     errors[day] = "invalid_program"
                     problems.append(str(err))
@@ -608,6 +662,12 @@ class SplitSchedulerOptionsFlow(OptionsFlow):
             "planning": self.opts[CONF_PLANNINGS][planning_id]["name"],
             "day": _DAY_NAMES[self._lang][self._day],
         }
+
+    def _allowed_here(self) -> list[str]:
+        """Profils autorisés dans le planning dont on édite le programme."""
+        assert self._program_target is not None
+        planning = self.opts[CONF_PLANNINGS][self._program_target[0]]
+        return allowed_profiles(planning, self.opts[CONF_PROFILES])
 
     def _profile_label(self, profile_id: str) -> str:
         profile = self.opts[CONF_PROFILES].get(profile_id, {"name": profile_id})
@@ -743,7 +803,7 @@ class SplitSchedulerOptionsFlow(OptionsFlow):
             profile_id = user_input.get("profile")
             if hhmm is None:
                 errors["time"] = "time_required"
-            elif profile_id not in self.opts[CONF_PROFILES]:
+            elif profile_id not in self._allowed_here():
                 errors["profile"] = "profile_required"
             elif hhmm != editing and hhmm in slots:
                 errors["time"] = "time_taken"
@@ -760,7 +820,7 @@ class SplitSchedulerOptionsFlow(OptionsFlow):
                 SelectSelectorConfig(
                     options=[
                         SelectOptionDict(value=pid, label=self._profile_label(pid))
-                        for pid in self.opts[CONF_PROFILES]
+                        for pid in self._allowed_here()
                     ],
                     mode=SelectSelectorMode.LIST,
                 )

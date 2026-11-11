@@ -9,6 +9,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from . import SplitSchedulerConfigEntry
+from .const import allowed_profiles
 from .entity import GroupEntity, SchedulerEntity
 from .scheduler import SplitScheduler
 
@@ -36,7 +37,17 @@ class ProfileSelect(GroupEntity, SelectEntity):
 
     def __init__(self, scheduler: SplitScheduler, group_id: str) -> None:
         super().__init__(scheduler, group_id, "profile")
-        self._attr_options = [p["name"] for p in scheduler.profiles.values()]
+
+    @property
+    def options(self) -> list[str]:
+        """Profils autorisés dans le planning actif du groupe (et le profil en cours)."""
+        scheduler = self.scheduler
+        planning = scheduler.plannings.get(self.group_state.planning_id, {})
+        ids = allowed_profiles(planning, scheduler.profiles)
+        active = self.group_state.active_profile_id
+        if active in scheduler.profiles and active not in ids:
+            ids = [pid for pid in scheduler.profiles if pid in ids or pid == active]
+        return [scheduler.profiles[pid]["name"] for pid in ids]
 
     @property
     def current_option(self) -> str | None:

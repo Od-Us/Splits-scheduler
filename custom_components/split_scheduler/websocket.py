@@ -20,6 +20,7 @@ from .const import (
     CONF_COMPRESSOR,
     CONF_PROGRAMS,
     DOMAIN,
+    allowed_profiles,
     describe_profile,
     profile_color,
 )
@@ -79,6 +80,11 @@ def ws_info(
                     "id": gid,
                     "name": group["name"],
                     "climates": group[CONF_CLIMATES],
+                    # appareil de chaque split, pour ouvrir sa page depuis la carte
+                    "devices": {
+                        eid: (registry.async_get(eid).device_id if registry.async_get(eid) else None)
+                        for eid in group[CONF_CLIMATES]
+                    },
                     "compressor": group.get(CONF_COMPRESSOR),
                     "entities": {
                         key: entity(domain, f"{entry_id}_{gid}_{suffix}")
@@ -97,7 +103,12 @@ def ws_info(
                 for pid, profile in scheduler.profiles.items()
             ],
             "plannings": [
-                {"id": plid, "name": planning["name"], "programs": planning.get(CONF_PROGRAMS, {})}
+                {
+                    "id": plid,
+                    "name": planning["name"],
+                    "programs": planning.get(CONF_PROGRAMS, {}),
+                    "allowed_profiles": allowed_profiles(planning, scheduler.profiles),
+                }
                 for plid, planning in scheduler.plannings.items()
             ],
         },

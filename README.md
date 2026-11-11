@@ -71,7 +71,13 @@ Sur la carte de l'intégration, cliquer sur **Configurer**. Un menu propose :
   celles que vos splits annoncent (`fan_modes`, `swing_modes`…) ; on peut aussi
   saisir une valeur.
 - **Types de planning** : ajout (éventuellement en copiant les programmes d'un
-  planning existant), renommage, suppression.
+  planning existant), modification, suppression. Chaque planning a sa liste de
+  **profils autorisés** (par exemple, pas de climatisation dans un planning
+  d'hiver) : seuls ces profils sont proposés dans son programme, sur la carte et
+  dans le sélecteur de profil des groupes qui le suivent (un autre profil est
+  refusé). Un profil utilisé dans le programme ne peut pas être décoché. Les
+  plannings existants autorisent tous les profils ; un nouveau profil est
+  autorisé partout, à décocher si besoin.
 - **Programme hebdomadaire d'un groupe** : choisir un planning et un groupe.
   La semaine s'affiche jour par jour avec le résumé des changements ; un jour
   vide indique le profil hérité (« Aucun changement — Eco depuis samedi 23:00 »).
@@ -203,6 +209,19 @@ Programmation des splits*. Tout se règle dans son éditeur visuel :
     (60 px de haut). La
     température ambiante est celle du capteur choisi pour le groupe, sinon
     celle du split ; la consigne n'est pas tracée quand le split est arrêté.
+
+Un clic sur le **nom du groupe** affiche ses splits (mode, consigne, température
+mesurée, ou « injoignable ») ; un clic sur un split ouvre la page de son
+appareil (fenêtre de détail du thermostat pour un utilisateur non
+administrateur).
+
+Un clic sur les **frises ou les courbes** ouvre une **vue détaillée** : jour,
+3 jours ou semaine, flèches pour remonter dans le temps, frise des profils
+réellement appliqués (dérogations comprises), marches du compresseur et nombre
+de démarrages, courbes ambiance / consigne / extérieur à afficher ou masquer,
+curseur donnant toutes les valeurs à l'instant choisi. Plein écran sur
+téléphone. La navigation est limitée à l'historique détaillé de Home Assistant
+(10 jours par défaut, réglage `purge_keep_days` de l'enregistreur).
 
 Chaque groupe montre en permanence la **consigne** (en grand), le profil actif,
 la température ambiante, le statut, la frise du jour et le prochain changement.

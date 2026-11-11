@@ -132,7 +132,7 @@
         "title": "Types de planning",
         "menu_options": {
           "planning_add": "Ajouter un planning",
-          "planning_edit_pick": "Renommer un planning",
+          "planning_edit_pick": "Modifier un planning",
           "planning_delete": "Supprimer des plannings",
           "init": "Retour"
         }
@@ -141,19 +141,29 @@
         "title": "Nouveau planning",
         "data": {
           "name": "Nom",
-          "copy_from": "Copier les programmes de"
+          "copy_from": "Copier les programmes de",
+          "allowed_profiles": "Profils autorisés"
+        },
+        "description": "Seuls les profils cochés sont proposés dans le programme de ce planning, sur la carte et dans le sélecteur de profil des groupes qui le suivent.",
+        "data_description": {
+          "allowed_profiles": "Un profil utilisé dans le programme de ce planning ne peut pas être décoché."
         }
       },
       "planning_edit_pick": {
-        "title": "Renommer un planning",
+        "title": "Modifier un planning",
         "data": {
           "planning": "Planning"
         }
       },
       "planning_edit": {
-        "title": "Renommer le planning",
+        "title": "Modifier le planning",
         "data": {
-          "name": "Nom"
+          "name": "Nom",
+          "allowed_profiles": "Profils autorisés"
+        },
+        "description": "Seuls les profils cochés sont proposés dans le programme de ce planning, sur la carte et dans le sélecteur de profil des groupes qui le suivent.",
+        "data_description": {
+          "allowed_profiles": "Un profil utilisé dans le programme de ce planning ne peut pas être décoché."
         }
       },
       "planning_delete": {
@@ -260,7 +270,9 @@
       "invalid_program": "Saisie invalide (détail ci-dessus).",
       "time_taken": "Une ligne existe déjà à cette heure.",
       "time_required": "Indiquez une heure.",
-      "profile_required": "Choisissez un profil."
+      "profile_required": "Choisissez un profil.",
+      "allowed_required": "Cochez au moins un profil.",
+      "allowed_in_use": "Profil utilisé dans le programme de ce planning : {used}. Retirez-le d'abord des lignes concernées."
     }
   },
   "selector": {
