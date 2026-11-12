@@ -106,7 +106,12 @@ async def test_manual_change_kept_until_next_slot(hass, calls, freezer):
     hass.states.async_set(SALON[0], "heat", {**ATTRS, "temperature": 23})
     await hass.async_block_till_done()
     assert hass.states.get("sensor.salon_status").state == "override"
-    assert hass.states.get("select.salon_profile").attributes["derogation"] is True
+    attrs = hass.states.get("select.salon_profile").attributes
+    assert attrs["derogation"] is False  # pas le groupe : ce split seul
+    assert [o["entity_id"] for o in attrs["derogations_splits"]] == [SALON[0]]
+    assert attrs["derogations_splits"][0]["ecarts"] == [
+        {"reglage": "temperature", "valeur": 23.0, "prevu": 20.0}
+    ]
 
     # Rien n'est réimposé avant 22:00…
     _clear(calls)
@@ -121,6 +126,7 @@ async def test_manual_change_kept_until_next_slot(hass, calls, freezer):
     await hass.async_block_till_done()
     assert hass.states.get("sensor.salon_status").state == "scheduled"
     assert len(calls["set_temperature"]) == 2
+    assert hass.states.get("select.salon_profile").attributes["derogations_splits"] == []
 
 
 async def test_own_commands_are_not_an_override(hass, calls, freezer):

@@ -103,22 +103,31 @@ async def test_shift_limits_and_remote_default(hass: HomeAssistant, freezer):
     entry, _ = await _setup(hass, freezer, day)
     scheduler = entry.runtime_data
     assert await scheduler.async_shift_override("salon", 30) is None    # pas de dérogation
-    # Changement à la télécommande : jusqu'au prochain créneau
+    assert await scheduler.async_shift_split("salon", SPLIT, 30) is None
+    # Changement à la télécommande : ce split, jusqu'au prochain créneau
     freezer.tick(timedelta(minutes=5))
     hass.states.async_set(SPLIT, "heat", {**ATTRS, "temperature": 23})
     await hass.async_block_till_done()
-    assert _attrs(hass)["reprise"] == datetime(2026, 11, 10, 22, 30, tzinfo=PARIS).isoformat()
+    (split,) = _attrs(hass)["derogations_splits"]
+    assert split["reprise"] == datetime(2026, 11, 10, 22, 30, tzinfo=PARIS).isoformat()
     # -30 trois fois : jamais moins de 30 min à partir de maintenant
     for _ in range(3):
-        until = await scheduler.async_shift_override("salon", -30)
+        until = await scheduler.async_shift_split("salon", SPLIT, -30)
     assert until == dt_util.utcnow() + timedelta(minutes=30)
     # +30 x 60 : jamais plus de 24 h
     for _ in range(60):
-        until = await scheduler.async_shift_override("salon", 30)
+        until = await scheduler.async_shift_split("salon", SPLIT, 30)
     assert until == dt_util.utcnow() + timedelta(hours=24)
-    # Reprendre maintenant efface la reprise choisie
-    await hass.services.async_call("button", "press", {"entity_id": "button.salon_reprendre_la_programmation"}, blocking=True)
-    assert _attrs(hass)["derogation"] is False and _attrs(hass)["reprise_choisie"] is False
+    assert _attrs(hass)["derogations_splits"][0]["reprise_choisie"] is True
+    # Reprendre ce split : fin de sa dérogation
+    await scheduler.async_resume_split("salon", SPLIT)
+    assert _attrs(hass)["derogations_splits"] == []
+    assert hass.states.get("sensor.salon_statut").state == "scheduled"
+    # Dérogation du groupe (réglage depuis la carte) : mêmes bornes
+    await scheduler.async_manual_settings("salon", {"temperature": 22})
+    for _ in range(3):
+        until = await scheduler.async_shift_override("salon", -30)
+    assert until == dt_util.utcnow() + timedelta(minutes=30)
 
 
 def test_powerful_ending_by_itself_is_not_a_deviation():

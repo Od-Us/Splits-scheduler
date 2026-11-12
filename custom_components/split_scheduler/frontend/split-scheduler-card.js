@@ -21,7 +21,7 @@
  *       chart: [ambient, setpoint, outdoor]  # courbes du jour (au choix)
  */
 
-const CARD_VERSION = "1.7.2";
+const CARD_VERSION = "1.8.0";
 const ICON_URL = new URL("icon.png", import.meta.url).href;
 
 const GROUP_DEFAULTS = {
@@ -141,6 +141,17 @@ const I18N = {
     resume_at: "Reprise",
     resume_now: "Reprendre maintenant",
     stale: "Version {v} installée, mais ce navigateur affiche encore la carte {c} (cache).",
+    ovr_n_splits: "Dérogation · {n} splits",
+    others_follow: "l'autre split suit le programme|les {n} autres splits suivent le programme",
+    instead: "{v} au lieu de {p}",
+    diff_targets: "Consignes différentes : {a} à {b} °C",
+    diff_modes: "Modes différents",
+    split_resume: "Remettre ce split au programme",
+    confirm_title: "Changer de planning ?",
+    confirm_group: "Le groupe « {g} » passe au planning « {p} ». Ses splits reçoivent aussitôt le profil prévu par ce planning ; les dérogations en cours sont annulées.",
+    confirm_all: "Tous les groupes ({n}) passent au planning « {p} ». Tous les splits reçoivent aussitôt le profil prévu par ce planning ; les dérogations en cours sont annulées.",
+    cancel: "Annuler",
+    confirm_ok: "Changer",
     reload: "Recharger",
     earlier: "Reprise 30 minutes plus tôt",
     later: "Reprise 30 minutes plus tard",
@@ -255,6 +266,17 @@ const I18N = {
     resume_at: "Resumes",
     resume_now: "Resume now",
     stale: "Version {v} is installed, but this browser still shows card {c} (cache).",
+    ovr_n_splits: "Override · {n} splits",
+    others_follow: "the other split follows the schedule|the {n} other splits follow the schedule",
+    instead: "{v} instead of {p}",
+    diff_targets: "Different targets: {a} to {b} °C",
+    diff_modes: "Different modes",
+    split_resume: "Put this split back on schedule",
+    confirm_title: "Change planning?",
+    confirm_group: "Group “{g}” switches to planning “{p}”. Its splits immediately receive the profile of this planning; current overrides are cancelled.",
+    confirm_all: "All groups ({n}) switch to planning “{p}”. All splits immediately receive the profile of this planning; current overrides are cancelled.",
+    cancel: "Cancel",
+    confirm_ok: "Change",
     reload: "Reload",
     earlier: "Resume 30 minutes earlier",
     later: "Resume 30 minutes later",
@@ -502,7 +524,7 @@ class SplitSchedulerCard extends HTMLElement {
       const s = this._hass.states[id];
       return s ? `${id}:${s.last_updated}` : id;
     });
-    return [JSON.stringify(this._config), this._error, JSON.stringify(this._pending), [...this._expanded].join(), [...this._splitsOpen].join(), lang(this._hass), this._historyStamp, ...parts].join("|");
+    return [JSON.stringify(this._config), this._error, this._confirm ? "confirm" : "", JSON.stringify(this._pending), [...this._expanded].join(), [...this._splitsOpen].join(), lang(this._hass), this._historyStamp, ...parts].join("|");
   }
 
   _render() {
@@ -525,6 +547,7 @@ class SplitSchedulerCard extends HTMLElement {
     const groups = this._groupConfigs();
     return `
       <div class="wrap">
+        ${this._renderConfirm()}
         ${this._renderStale()}
         ${this._renderHeader()}
         <div class="grid">${groups.map((g) => this._renderGroup(g)).join("")}</div>
@@ -575,7 +598,14 @@ class SplitSchedulerCard extends HTMLElement {
     const profileState = this._state(e.profile);
     const planningState = this._state(e.planning);
     const nextState = this._state(e.next_change);
-    const climate = this._state(g.info.climates[0]);
+    const pa0 = profileState?.attributes || {};
+    const groupOverride = pa0.derogation === true;
+    const splitOvr = groupOverride ? [] : (pa0.derogations_splits || []);
+    const held = new Set(splitOvr.map((o) => o.entity_id));
+    const ready = (id) => { const st = this._state(id); return st && !["unavailable", "unknown"].includes(st.state); };
+    // Référence : premier split qui suit le programme (sinon le premier)
+    const followers = g.info.climates.filter((id) => !held.has(id) && ready(id));
+    const climate = this._state(followers[0] || g.info.climates[0]);
     const attrs = climate?.attributes || {};
     const profile = this._profile(profileState?.state);
     const color = profile?.color || "var(--disabled-color, #9e9e9e)";
@@ -590,6 +620,29 @@ class SplitSchedulerCard extends HTMLElement {
       big = `<span class="big range">${this._fmt(attrs.target_temp_low)}–${this._fmt(attrs.target_temp_high)}<small> °C</small></span>`;
     } else if (target === undefined || target === null) big = `<span class="big word">–</span>`;
     else big = `<span class="big">${this._fmt(target)}<small> °C</small></span>`;
+
+    // Écarts : splits en dérogation, et splits qui ne sont pas d'accord entre eux
+    const deviations = [];
+    for (const o of splitOvr) {
+      const st = this._state(o.entity_id);
+      const t = (o.ecarts || []).find((x) => x.reglage === "temperature");
+      const m = (o.ecarts || []).find((x) => x.reglage === "hvac_mode");
+      const what = m ? (hvac[m.valeur] || m.valeur) : t ? `${this._fmt(t.valeur)} °C` : null;
+      if (what) deviations.push(`${this._splitName(o.entity_id, st)} : ${what}`);
+    }
+    const running = followers.map((id) => this._state(id)).filter((st) => st.state !== "off");
+    const temps = [...new Set(running.map((st) => st.attributes.temperature).filter((v) => v != null).map(Number))];
+    const modes = new Set(followers.map((id) => this._state(id).state));
+    if (modes.size > 1) deviations.push(this._t("diff_modes"));
+    else if (temps.length > 1) {
+      deviations.push(this._t("diff_targets").replace("{a}", this._fmt(Math.min(...temps))).replace("{b}", this._fmt(Math.max(...temps))));
+    }
+    let statusText = I18N[lang(this._hass)].status[status] || status;
+    if (status === "override" && !groupOverride && splitOvr.length) {
+      statusText = splitOvr.length === 1
+        ? `${statusText} · ${this._splitName(splitOvr[0].entity_id)}`
+        : this._t("ovr_n_splits").replace("{n}", splitOvr.length);
+    }
 
     const statusIcon = { scheduled: ICONS.check, override: ICONS.alert, disabled: ICONS.pause }[status] || ICONS.pause;
     const statusColor = STATUS_COLORS[status] || STATUS_COLORS.disabled;
@@ -623,7 +676,10 @@ class SplitSchedulerCard extends HTMLElement {
         .replace("{d}", this._fmt(pa.ecart_max_exterieur, 0)).replace("{p}", this._fmt(pa.consigne_profil, 0));
       banner += `<div class="banner info">${svg(ICONS.info, 18)}<span>${esc(text)}</span></div>`;
     }
-    if (status === "override") {
+    if (status === "override" && !groupOverride) {
+      const others = g.info.climates.length - splitOvr.length;
+      for (const o of splitOvr) banner += this._splitBanner(g, o, others);
+    } else if (status === "override") {
       const gid = esc(g.group);
       const resume = pa.reprise;
       const skip = pa.creneau_ignore;
@@ -662,13 +718,14 @@ class SplitSchedulerCard extends HTMLElement {
           <button type="button" class="gname" aria-expanded="${this._splitsOpen.has(g.group)}" data-action="splits" data-group="${esc(g.group)}">
             <h2>${esc(g.info.name)}</h2><span class="muted small">${esc(plural(this._t("n_splits"), g.info.climates.length))}</span>${svg(this._splitsOpen.has(g.group) ? ICONS.up : ICONS.down, 16)}
           </button>
-          <span class="status" style="background:${mix(statusColor, 18)};color:${mix(statusColor, 70, "var(--primary-text-color)")}">${svg(statusIcon, 14)}${esc(I18N[lang(this._hass)].status[status] || status)}</span>
+          <span class="status" style="background:${mix(statusColor, 18)};color:${mix(statusColor, 70, "var(--primary-text-color)")}">${svg(statusIcon, 14)}<span class="ell">${esc(statusText)}</span></span>
         </div>
-        ${this._splitsOpen.has(g.group) ? this._renderSplits(g) : ""}
+        ${this._splitsOpen.has(g.group) ? this._renderSplits(g, splitOvr) : ""}
         <div class="row between end">
           <div class="col"><span class="muted small">${esc(this._t("setpoint"))}</span>
             <span class="row bigrow">${big}${adapted ? `<span class="adapted">${svg(pa.consigne_appliquee > pa.consigne_profil ? ICONS.adapt_up : ICONS.adapt_down, 13)}${esc(this._t("adapted"))}</span>` : ""}</span>
-            ${adapted ? `<span class="muted small">${esc(this._t("profile_target").replace("{t}", this._fmt(pa.consigne_profil)))}</span>` : ""}</div>
+            ${adapted ? `<span class="muted small">${esc(this._t("profile_target").replace("{t}", this._fmt(pa.consigne_profil)))}</span>` : ""}
+            ${deviations.map((d) => `<span class="small devi">${esc(d)}</span>`).join("")}</div>
           <div class="col right">
             ${profile ? `<span class="pchip" style="background:${mix(color, 20)};color:${mix(color, 55, "var(--primary-text-color)")}"><i style="background:${color}"></i>${esc(profile.name)}</span>` : ""}
             <span class="muted small">${esc([hvac[mode] || "", ["eco", "boost"].includes(attrs.preset_mode) ? I18N[lang(this._hass)].presets[attrs.preset_mode] : ""].filter(Boolean).join(" · "))}</span>
@@ -682,8 +739,9 @@ class SplitSchedulerCard extends HTMLElement {
       </article>`;
   }
 
-  _renderSplits(g) {
+  _renderSplits(g, splitOvr = []) {
     const hvac = I18N[lang(this._hass)].hvac;
+    const byId = Object.fromEntries(splitOvr.map((o) => [o.entity_id, o]));
     const rows = g.info.climates.map((eid) => {
       const s = this._state(eid);
       const name = s?.attributes?.friendly_name || eid;
@@ -703,10 +761,46 @@ class SplitSchedulerCard extends HTMLElement {
         sub = parts.join(" · ");
         if (s.state === "off") color = "var(--disabled-color, #9e9e9e)";
       }
-      return `<button type="button" class="split" data-action="open-split" data-group="${esc(g.group)}" data-value="${esc(eid)}" aria-label="${esc(this._t("open_split"))} : ${esc(name)}">
-        <i style="background:${color}"></i><span class="col"><strong>${esc(name)}</strong><span class="small ${warn ? "err" : "muted"}">${esc(sub)}</span></span>${svg(ICONS.ext, 16)}</button>`;
+      const o = byId[eid];
+      const extra = o ? [this._ecarts(o), o.reprise ? `${this._t("resume_at").toLowerCase()} ${this._time(o.reprise)}` : ""].filter(Boolean).join(" · ") : "";
+      return `<div class="splitrow${o ? " held" : ""}"><button type="button" class="split" data-action="open-split" data-group="${esc(g.group)}" data-value="${esc(eid)}" aria-label="${esc(this._t("open_split"))} : ${esc(name)}">
+        <i style="background:${color}"></i><span class="col"><strong>${esc(name)}</strong><span class="small ${warn ? "err" : "muted"}">${esc(sub)}</span>${extra ? `<span class="small devi">${esc(extra)}</span>` : ""}</span>${svg(ICONS.ext, 16)}</button>
+        ${o ? `<button type="button" class="filled resume" data-action="split-resume" data-group="${esc(g.group)}" data-value="${esc(eid)}" aria-label="${esc(this._t("split_resume"))} : ${esc(name)}" title="${esc(this._t("split_resume"))}">${svg(ICONS.resume, 20)}</button>` : ""}</div>`;
     }).join("");
     return `<div class="splits">${rows}</div>`;
+  }
+
+  _splitName(entityId, st = this._state(entityId)) {
+    return st?.attributes?.friendly_name || entityId;
+  }
+
+  /** « 23 °C au lieu de 20 °C », « Climatisation au lieu de Chauffage »… */
+  _ecarts(o) {
+    const L = I18N[lang(this._hass)];
+    const fmt = (r, v) => {
+      if (v === null || v === undefined) return "–";
+      if (r === "temperature") return `${this._fmt(v)} °C`;
+      if (r === "hvac_mode") return L.hvac[v] || v;
+      if (r === "preset_mode") return L.presets[v] || v;
+      return `${this._t({ fan_mode: "fan", swing_mode: "swing" }[r] || r).toLowerCase()} ${v}`;
+    };
+    return (o.ecarts || []).map((x) => this._t("instead").replace("{v}", fmt(x.reglage, x.valeur)).replace("{p}", fmt(x.reglage, x.prevu))).join(", ");
+  }
+
+  /** Bandeau compact d'un split en dérogation. */
+  _splitBanner(g, o, others) {
+    const gid = esc(g.group);
+    const eid = esc(o.entity_id);
+    const note = [this._ecarts(o), others > 0 ? plural(this._t("others_follow"), others) : ""].filter(Boolean).join(" · ");
+    return `<div class="banner warn compact">
+        <div class="row">
+          <span class="when"><strong class="who">${esc(this._splitName(o.entity_id))}</strong> <span class="small">${esc(this._t("resume_at").toLowerCase())}</span> <strong>${o.reprise ? esc(this._time(o.reprise)) : "–"}</strong></span>
+          ${o.reprise ? `<button type="button" class="shift" data-action="shift" data-group="${gid}" data-entity="${eid}" data-value="-30" aria-label="${esc(this._t("earlier"))}">−30min</button>
+          <button type="button" class="shift" data-action="shift" data-group="${gid}" data-entity="${eid}" data-value="30" aria-label="${esc(this._t("later"))}">+30min</button>` : ""}
+          <button type="button" class="filled resume" data-action="split-resume" data-group="${gid}" data-value="${eid}" aria-label="${esc(this._t("split_resume"))}" title="${esc(this._t("split_resume"))}">${svg(ICONS.resume, 20)}</button>
+        </div>
+        ${note ? `<span class="small note">${esc(note)}</span>` : ""}
+      </div>`;
   }
 
   _openSplit(g, entityId) {
@@ -1037,11 +1131,30 @@ class SplitSchedulerCard extends HTMLElement {
     const e = g?.info?.entities || {};
     const hass = this._hass;
     switch (action) {
-      case "global-planning":
-        this._call(hass.callService("select", "select_option", { entity_id: this._info.global_planning, option: value }));
+      case "global-planning": {
+        const current = this._state(this._info.global_planning)?.state;
+        if (value === current) break;
+        const n = this._groupConfigs().filter((x) => x.info).length;
+        this._askConfirm(this._t("confirm_all").replace("{n}", n).replace("{p}", value),
+          () => this._call(hass.callService("select", "select_option", { entity_id: this._info.global_planning, option: value })));
         break;
+      }
       case "planning":
-        this._call(hass.callService("select", "select_option", { entity_id: e.planning, option: value }));
+        if (value === this._state(e.planning)?.state) break;
+        this._askConfirm(this._t("confirm_group").replace("{g}", g.info.name).replace("{p}", value),
+          () => this._call(hass.callService("select", "select_option", { entity_id: e.planning, option: value })));
+        break;
+      case "confirm-ok": {
+        const run = this._confirm?.run;
+        this._closeConfirm();
+        run?.();
+        break;
+      }
+      case "confirm-cancel":
+        this._closeConfirm();
+        break;
+      case "split-resume":
+        this._call(hass.callWS({ type: "split_scheduler/split_resume", group_id: group, entity_id: value }));
         break;
       case "profile":
         this._call(hass.callService("select", "select_option", { entity_id: e.profile, option: value }));
@@ -1085,10 +1198,38 @@ class SplitSchedulerCard extends HTMLElement {
         this._manual(group, { preset_mode: value });
         break;
       case "shift":
-        this._call(this._hass.callWS({ type: "split_scheduler/override_shift", group_id: group, minutes: Number(value) }));
+        this._call(this._hass.callWS({ type: "split_scheduler/override_shift", group_id: group, minutes: Number(value), ...(el.dataset.entity ? { entity_id: el.dataset.entity } : {}) }));
         break;
       default:
     }
+  }
+
+  /** Fenêtre de confirmation (changement de planning). */
+  _askConfirm(text, run) {
+    this._confirm = { text, run };
+    this._signature = "";
+    this._render();
+    this.shadowRoot.querySelector(".confirm [data-action=confirm-cancel]")?.focus();
+  }
+
+  _closeConfirm() {
+    this._confirm = null;
+    this._signature = "";
+    this._render();
+  }
+
+  _renderConfirm() {
+    if (!this._confirm) return "";
+    return `<div class="confirm" role="alertdialog" aria-modal="true" aria-labelledby="cf-t" aria-describedby="cf-d">
+      <div class="confirm-box">
+        <h3 id="cf-t">${esc(this._t("confirm_title"))}</h3>
+        <p id="cf-d">${esc(this._confirm.text)}</p>
+        <div class="row end2">
+          <button type="button" class="outlined" data-action="confirm-cancel">${esc(this._t("cancel"))}</button>
+          <button type="button" class="filled" data-action="confirm-ok">${esc(this._t("confirm_ok"))}</button>
+        </div>
+      </div>
+    </div>`;
   }
 
   _onChange(ev) {
@@ -1588,6 +1729,20 @@ const CARD_CSS = `
   .ylab.top { top: -2px; } .ylab.bottom { bottom: -2px; }
   .gname { display: inline-flex; align-items: center; gap: 8px; min-height: 40px; padding: 0 6px 0 0; border: 0; background: none; color: var(--primary-text-color); text-align: left; }
   .gname svg { color: var(--secondary-text-color); }
+  .splitrow { display: flex; align-items: center; border-top: 1px solid var(--divider-color); background: var(--card-background-color, #fff); }
+  .splitrow:first-child { border-top: 0; }
+  .splitrow .split { flex: 1; min-width: 0; border-top: 0; background: none; }
+  .splitrow.held { background: ${mix("var(--warning-color, #ffa000)", 9, "var(--card-background-color, #fff)")}; box-shadow: inset 3px 0 0 var(--warning-color, #ffa000); }
+  .splitrow .resume { width: 40px; min-height: 40px; padding: 0; margin-right: 10px; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .devi { color: ${mix("var(--warning-color, #ffa000)", 75, "var(--primary-text-color)")}; font-weight: 500; }
+  .status .ell { overflow: hidden; text-overflow: ellipsis; }
+  .status { max-width: 60%; }
+  .banner.compact .who { font-size: 14px; }
+  .confirm { position: fixed; inset: 0; z-index: 10; display: flex; align-items: center; justify-content: center; padding: 16px; background: rgba(0,0,0,.45); }
+  .confirm-box { width: min(420px, 100%); box-sizing: border-box; padding: 20px; border-radius: 20px; background: var(--card-background-color, #fff); color: var(--primary-text-color); box-shadow: 0 10px 30px rgba(0,0,0,.3); display: flex; flex-direction: column; gap: 12px; }
+  .confirm-box h3 { margin: 0; font-size: 19px; font-weight: 500; }
+  .confirm-box p { margin: 0; font-size: 14px; line-height: 20px; color: var(--secondary-text-color); }
+  .confirm-box .end2 { justify-content: flex-end; gap: 8px; }
   .splits { display: flex; flex-direction: column; border: 1px solid var(--divider-color); border-radius: 12px; overflow: hidden; box-shadow: 0 4px 14px rgba(0,0,0,.08); }
   .split { display: flex; align-items: center; gap: 12px; min-height: 56px; padding: 8px 12px; border: 0; border-top: 1px solid var(--divider-color); background: var(--card-background-color, #fff); color: var(--primary-text-color); text-align: left; }
   .split:first-child { border-top: 0; }

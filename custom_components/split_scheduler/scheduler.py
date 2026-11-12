@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 import logging
 from typing import Any
@@ -79,6 +79,20 @@ _MODE_SETTINGS = (
 
 
 @dataclass
+class SplitOverride:
+    """Dérogation d'un seul split (télécommande, fenêtre du thermostat)."""
+
+    since: datetime
+    until: datetime | None = None  # None : jusqu'au prochain créneau du groupe
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "since": self.since.isoformat(),
+            "until": self.until.isoformat() if self.until else None,
+        }
+
+
+@dataclass
 class GroupState:
     """État d'exécution d'un groupe (en partie persisté)."""
 
@@ -102,6 +116,8 @@ class GroupState:
     # Dérogation : début, et heure de reprise choisie (None : prochain créneau)
     override_since: datetime | None = None
     override_until: datetime | None = None
+    # Splits en dérogation individuelle (les autres suivent le programme)
+    split_overrides: dict[str, SplitOverride] = field(default_factory=dict)
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -121,6 +137,7 @@ class GroupState:
             "hand_set": self.hand_set,
             "override_since": self.override_since.isoformat() if self.override_since else None,
             "override_until": self.override_until.isoformat() if self.override_until else None,
+            "split_overrides": {eid: o.as_dict() for eid, o in self.split_overrides.items()},
         }
 
 
@@ -169,6 +186,12 @@ class SplitScheduler:
                 hand_set=data.get("hand_set", False),
                 override_since=_parse(data.get("override_since")),
                 override_until=_parse(data.get("override_until")),
+                split_overrides={
+                    eid: SplitOverride(since=since, until=_parse(o.get("until")))
+                    for eid, o in (data.get("split_overrides") or {}).items()
+                    if eid in self.groups[gid][CONF_CLIMATES]
+                    and (since := _parse(o.get("since"))) is not None
+                },
             )
             if self.groups[gid].get(CONF_COMPRESSOR):
                 stored_log = data.get("compressor")
@@ -382,7 +405,7 @@ class SplitScheduler:
         state.applied_at = now  # nos propres commandes : pas de fausse dérogation
         for entity_id in self.groups[gid][CONF_CLIMATES]:
             split = self.hass.states.get(entity_id)
-            if split is None or split.state in _NOT_READY:
+            if split is None or split.state in _NOT_READY or entity_id in state.split_overrides:
                 continue
             try:
                 await self._async_send(entity_id, split, {ATTR_TEMPERATURE: wanted})
@@ -457,7 +480,7 @@ class SplitScheduler:
         state = self.states[gid]
         if not state.enabled:
             return STATUS_DISABLED
-        if state.override:
+        if state.override or state.split_overrides:
             return STATUS_OVERRIDE
         if not state.has_program:
             return STATUS_NO_PROGRAM
@@ -517,7 +540,32 @@ class SplitScheduler:
                 self._timers[gid] = async_track_point_in_time(
                     self.hass, self._make_timer_action(gid, upcoming.start), upcoming.start
                 )
+        await self._async_split_timers(gid, now)
         self._changed()
+
+    async def _async_split_timers(self, gid: str, now: datetime) -> None:
+        """Reprise des splits dont l'heure de reprise choisie est atteinte ; minuteurs des autres."""
+        state = self.states[gid]
+        for key in [k for k in self._timers if k.startswith(f"{gid}|")]:
+            self._timers.pop(key)()
+        if not state.enabled or state.override:
+            return
+        for entity_id, ovr in list(state.split_overrides.items()):
+            if ovr.until is None:
+                continue
+            if ovr.until <= now:
+                await self.async_resume_split(gid, entity_id, refresh=False)
+                continue
+            self._timers[f"{gid}|{entity_id}"] = async_track_point_in_time(
+                self.hass, self._make_split_timer_action(gid, entity_id), ovr.until
+            )
+
+    def _make_split_timer_action(self, gid: str, entity_id: str) -> Callable[[datetime], Any]:
+        async def _action(fired: datetime) -> None:
+            self._timers.pop(f"{gid}|{entity_id}", None)
+            await self.async_resume_split(gid, entity_id)
+
+        return _action
 
     def _make_timer_action(self, gid: str, target: datetime) -> Callable[[datetime], Any]:
         async def _action(fired: datetime) -> None:
@@ -548,6 +596,63 @@ class SplitScheduler:
         state.override_until = min(max(wanted, now + timedelta(minutes=30)), now + timedelta(hours=24))
         await self.async_refresh_group(gid)
         return state.override_until
+
+    def split_resume_at(self, gid: str, entity_id: str) -> datetime | None:
+        """Heure de reprise d'un split en dérogation : choisie, sinon le prochain créneau."""
+        ovr = self.states[gid].split_overrides.get(entity_id)
+        if ovr is None:
+            return None
+        if ovr.until is not None:
+            return ovr.until
+        upcoming = next_occurrence(self.program(gid, self.states[gid].planning_id), dt_util.now())
+        return upcoming.start if upcoming else None
+
+    async def async_shift_split(self, gid: str, entity_id: str, minutes: int) -> datetime | None:
+        """Avance ou recule la reprise d'un split (entre 30 min et 24 h à partir de maintenant)."""
+        ovr = self.states[gid].split_overrides.get(entity_id)
+        base = self.split_resume_at(gid, entity_id)
+        if ovr is None or base is None:
+            return None
+        now = dt_util.utcnow()
+        wanted = dt_util.as_utc(base) + timedelta(minutes=minutes)
+        ovr.until = min(max(wanted, now + timedelta(minutes=30)), now + timedelta(hours=24))
+        await self._async_split_timers(gid, dt_util.now())
+        self._changed()
+        return ovr.until
+
+    async def async_resume_split(self, gid: str, entity_id: str, *, refresh: bool = True) -> None:
+        """Remet un seul split au profil en cours du groupe."""
+        state = self.states[gid]
+        if state.split_overrides.pop(entity_id, None) is None:
+            return
+        _LOGGER.info("Groupe « %s » : %s reprend le programme", self.groups[gid]["name"], entity_id)
+        if state.active_profile_id is not None:
+            state.applied_at = dt_util.utcnow()  # nos propres commandes : pas de détection
+            await self._async_apply_entity(gid, state.active_profile_id, entity_id)
+        if refresh:
+            await self._async_split_timers(gid, dt_util.now())
+            self._changed()
+
+    def split_overrides_info(self, gid: str) -> list[dict[str, Any]]:
+        """Splits en dérogation : depuis, reprise et écarts avec le profil en cours."""
+        state = self.states[gid]
+        settings = (
+            self._settings_for(gid, state.active_profile_id) if state.active_profile_id else {}
+        )
+        result = []
+        for entity_id, ovr in state.split_overrides.items():
+            resume = self.split_resume_at(gid, entity_id)
+            current = self.hass.states.get(entity_id)
+            result.append(
+                {
+                    "entity_id": entity_id,
+                    "depuis": ovr.since.isoformat(),
+                    "reprise": resume.isoformat() if resume else None,
+                    "reprise_choisie": ovr.until is not None,
+                    "ecarts": _differences(current, settings) if current is not None else [],
+                }
+            )
+        return result
 
     def override_info(self, gid: str) -> dict[str, Any]:
         """Dérogation en cours : début, reprise, profil repris, créneau ignoré."""
@@ -581,6 +686,7 @@ class SplitScheduler:
     async def async_select_planning(self, gid: str, planning_id: str) -> None:
         """Change le planning d'un groupe et applique aussitôt son créneau en cours."""
         self.states[gid].planning_id = planning_id
+        self.states[gid].split_overrides.clear()
         self.states[gid].last_slot_key = None
         await self.async_refresh_group(gid, force=True)
 
@@ -591,6 +697,7 @@ class SplitScheduler:
     async def async_set_enabled(self, gid: str, enabled: bool) -> None:
         state = self.states[gid]
         state.enabled = enabled
+        state.split_overrides.clear()
         if enabled:
             state.override = False
         await self.async_refresh_group(gid, force=enabled)
@@ -599,6 +706,7 @@ class SplitScheduler:
         """Annule une dérogation : réapplique le profil programmé maintenant."""
         self.states[gid].enabled = True
         self.states[gid].override = False
+        self.states[gid].split_overrides.clear()
         await self.async_refresh_group(gid, force=True)
 
     async def async_manual_settings(self, gid: str, settings: dict[str, Any]) -> None:
@@ -613,6 +721,7 @@ class SplitScheduler:
                 state.override_since = dt_util.utcnow()
             state.override = True
             state.hand_set = True
+        state.split_overrides.clear()  # le réglage de la carte vaut pour tous les splits
         _LOGGER.info("Groupe « %s » : réglage manuel %s", self.groups[gid]["name"], settings)
         for entity_id in self.groups[gid][CONF_CLIMATES]:
             current = self.hass.states.get(entity_id)
@@ -650,7 +759,13 @@ class SplitScheduler:
             profile["name"],
             " (choix manuel)" if manual else "",
         )
+        now = dt_util.utcnow()
         for entity_id in self.groups[gid][CONF_CLIMATES]:
+            ovr = state.split_overrides.get(entity_id)
+            if ovr is not None:
+                if not manual and ovr.until is not None and now < ovr.until:
+                    continue  # reprise choisie plus tard : ce créneau est ignoré pour ce split
+                del state.split_overrides[entity_id]
             await self._async_apply_entity(gid, profile_id, entity_id)
 
     async def _async_apply_entity(self, gid: str, profile_id: str, entity_id: str) -> None:
@@ -734,12 +849,15 @@ class SplitScheduler:
         if old is None or old.state in _NOT_READY:
             return
         now = dt_util.utcnow()
+        if any(entity_id in st.split_overrides for st in self.states.values()):
+            self._notify()  # écarts affichés pour ce split : à jour
         for gid, group in self.groups.items():
             state = self.states[gid]
             if (
                 entity_id not in group[CONF_CLIMATES]
                 or not state.enabled
                 or state.override
+                or entity_id in state.split_overrides
                 or state.active_profile_id is None
                 or (state.applied_at is not None and now - state.applied_at < GRACE_PERIOD)
             ):
@@ -747,14 +865,12 @@ class SplitScheduler:
             profile = self._settings_for(gid, state.active_profile_id)
             if _deviates(new, profile):
                 _LOGGER.info(
-                    "Groupe « %s » : réglage manuel détecté sur %s, conservé "
-                    "jusqu'au prochain créneau",
+                    "Groupe « %s » : réglage manuel détecté sur %s, ce split seul est en "
+                    "dérogation jusqu'au prochain créneau",
                     group["name"],
                     entity_id,
                 )
-                state.override_since = dt_util.utcnow()
-                state.override = True
-                state.hand_set = True
+                state.split_overrides[entity_id] = SplitOverride(since=now)
                 self._changed()
 
 
@@ -782,6 +898,30 @@ def _deviates(state: State, profile: dict) -> bool:
         if value is not None and value in attrs.get(choices, []) and attrs.get(attr) != value:
             return True
     return False
+
+
+def _differences(state: State, profile: dict) -> list[dict[str, Any]]:
+    """Réglages du split qui s'écartent du profil : [{reglage, valeur, prevu}]."""
+    if state.state in _NOT_READY:
+        return []
+    attrs = state.attributes
+    result: list[dict[str, Any]] = []
+    hvac_mode = profile.get(ATTR_HVAC_MODE)
+    if hvac_mode is not None and state.state != hvac_mode:
+        result.append({"reglage": "hvac_mode", "valeur": state.state, "prevu": hvac_mode})
+    if state.state == "off":
+        return result
+    temperature = profile.get(ATTR_TEMPERATURE)
+    current = attrs.get("temperature")
+    if temperature is not None and current is not None and state.state != "fan_only":
+        wanted = target_temperature(attrs, temperature)
+        if abs(float(current) - wanted) > TEMPERATURE_TOLERANCE:
+            result.append({"reglage": "temperature", "valeur": float(current), "prevu": wanted})
+    for setting, attr, choices, _ in _MODE_SETTINGS:
+        value = profile.get(setting)
+        if value is not None and value in attrs.get(choices, []) and attrs.get(attr) != value:
+            result.append({"reglage": attr, "valeur": attrs.get(attr), "prevu": value})
+    return result
 
 
 def target_temperature(attrs: Mapping[str, Any], wanted: float) -> float:

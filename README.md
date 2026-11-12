@@ -11,8 +11,10 @@ Intégration personnalisée `split_scheduler` qui programme les splits d'une pom
   hebdomadaire des changements de profil.
 - Un **sélecteur de planning** par groupe, plus un sélecteur global qui bascule
   tous les groupes d'un coup.
-- Un **réglage manuel** (télécommande, thermostat HA, choix d'un profil) est
-  respecté jusqu'au prochain créneau programmé.
+- Un **réglage manuel** est respecté jusqu'au prochain créneau programmé :
+  fait sur un split (télécommande, fenêtre de son thermostat), il ne concerne
+  que ce split ; fait depuis la carte (choix d'un profil, réglage manuel), il
+  vaut pour tout le groupe.
 
 Tout se configure depuis l'interface de Home Assistant, sans YAML.
 
@@ -139,10 +141,22 @@ création des entités ; ils se retrouvent dans la page de l'appareil.
   reprise le profil prévu à ce moment est appliqué. L'heure de reprise survit à
   un redémarrage ; attributs `reprise`, `reprise_profil`, `creneau_ignore`,
   `derogation_depuis` sur le sélecteur de profil.
-- **Réglage manuel** : si un split s'écarte du profil appliqué (mode,
-  consigne à plus de 0,3 °C près, ventilateur, oscillation) plus de 2 minutes
-  après l'envoi, le groupe passe en *Dérogation*. Rien n'est réimposé avant le
-  prochain créneau, ou avant un appui sur *Reprendre la programmation*.
+- **Réglage sur un split** (télécommande, fenêtre de son thermostat) : si un
+  split s'écarte du profil appliqué (mode, consigne à plus de 0,3 °C près,
+  ventilateur, oscillation, préréglage) plus de 2 minutes après l'envoi,
+  **ce split seul** passe en dérogation ; les autres splits du groupe
+  continuent de suivre les créneaux et l'adaptation à l'extérieur. Il reprend
+  au prochain créneau, ou à l'heure choisie avec ses boutons −30min / +30min,
+  ou avec son bouton de reprise (bandeau ou liste des splits). Attribut
+  `derogations_splits` du sélecteur de profil : split, début, reprise et écarts
+  (`[{reglage, valeur, prevu}]`).
+- **Réglage depuis la carte** (réglage manuel, choix d'un profil) : envoyé à
+  tous les splits, **tout le groupe** passe en *Dérogation* (les dérogations
+  des splits sont annulées). Rien n'est réimposé avant le prochain créneau,
+  ou avant un appui sur *Reprendre la programmation*.
+- **Changement de planning** (groupe ou tous les groupes) : la carte demande
+  confirmation, car tous les splits concernés reçoivent aussitôt le nouveau
+  profil ; les dérogations en cours sont annulées.
 - **Redémarrage de Home Assistant** : un changement prévu pendant l'arrêt est
   rattrapé au démarrage. Une dérogation en cours dans le même créneau est
   conservée.
@@ -241,6 +255,12 @@ téléphone. La navigation est limitée à l'historique détaillé de Home Assis
 Chaque groupe montre en permanence la **consigne** (en grand), le profil actif,
 la température ambiante, le statut, la frise du jour et le prochain changement.
 En dérogation, un bandeau indique l'heure de reprise et propose *Reprendre*.
+Quand un seul split déroge, le statut le nomme (« Dérogation · Chambre 2 »),
+son écart s'affiche sous la consigne (« Chambre 2 : 23,0 °C ») et il a son
+propre bandeau ; la grande consigne reste celle des splits qui suivent le
+programme. Si ces splits ne sont pas d'accord entre eux (par exemple un split
+injoignable au moment de l'envoi), la carte affiche « Consignes différentes :
+20 à 21,5 °C » ou « Modes différents ».
 Le bouton **Modifier** déplie le planning, les profils, les réglages manuels et
 l'interrupteur de programmation. Un réglage manuel est envoyé à **tous les
 splits du groupe** et vaut dérogation jusqu'au prochain créneau.
@@ -309,8 +329,9 @@ plus fiable.
   minutes** ;
 - sans valeur extérieure valable pendant une heure : retour à la consigne du
   profil ;
-- après un réglage manuel (carte, télécommande), plus d'adaptation jusqu'au
-  prochain créneau.
+- après un réglage manuel depuis la carte, plus d'adaptation jusqu'au
+  prochain créneau ; un split en dérogation n'est pas adapté, les autres le
+  restent.
 
 Au changement de profil, la consigne adaptée est appliquée tout de suite. Le
 sélecteur de profil porte les attributs `consigne_profil`, `consigne_appliquee`,

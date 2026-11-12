@@ -45,6 +45,7 @@ def async_register(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, ws_info)
     websocket_api.async_register_command(hass, ws_manual)
     websocket_api.async_register_command(hass, ws_override_shift)
+    websocket_api.async_register_command(hass, ws_split_resume)
 
 
 def _scheduler(hass: HomeAssistant) -> SplitScheduler | None:
@@ -154,6 +155,7 @@ async def ws_manual(
     {
         vol.Required("type"): "split_scheduler/override_shift",
         vol.Required("group_id"): str,
+        vol.Optional("entity_id"): str,
         vol.Required("minutes"): vol.All(vol.Coerce(int), vol.Range(min=-1440, max=1440)),
     }
 )
@@ -166,8 +168,31 @@ async def ws_override_shift(
     if scheduler is None or msg["group_id"] not in scheduler.groups:
         connection.send_error(msg["id"], "not_found", "Groupe inconnu")
         return
-    until = await scheduler.async_shift_override(msg["group_id"], msg["minutes"])
+    if "entity_id" in msg:  # dérogation d'un seul split
+        until = await scheduler.async_shift_split(msg["group_id"], msg["entity_id"], msg["minutes"])
+    else:
+        until = await scheduler.async_shift_override(msg["group_id"], msg["minutes"])
     if until is None:
         connection.send_error(msg["id"], "no_override", "Aucune dérogation en cours")
         return
     connection.send_result(msg["id"], {"reprise": until.isoformat()})
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): "split_scheduler/split_resume",
+        vol.Required("group_id"): str,
+        vol.Required("entity_id"): str,
+    }
+)
+@websocket_api.async_response
+async def ws_split_resume(
+    hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]
+) -> None:
+    """Remet un seul split au programme (fin de sa dérogation)."""
+    scheduler = _scheduler(hass)
+    if scheduler is None or msg["group_id"] not in scheduler.groups:
+        connection.send_error(msg["id"], "not_found", "Groupe inconnu")
+        return
+    await scheduler.async_resume_split(msg["group_id"], msg["entity_id"])
+    connection.send_result(msg["id"])
