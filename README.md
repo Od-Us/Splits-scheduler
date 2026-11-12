@@ -245,6 +245,9 @@ Le bouton **Modifier** déplie le planning, les profils, les réglages manuels e
 l'interrupteur de programmation. Un réglage manuel est envoyé à **tous les
 splits du groupe** et vaut dérogation jusqu'au prochain créneau.
 
+Après une mise à jour, si le navigateur ou l'application affiche encore
+l'ancienne carte (cache), un bandeau le signale avec un bouton *Recharger*.
+
 La carte suit le thème clair ou sombre de Home Assistant. Pour une page
 « Chauffage » plein écran, mettez-la seule dans une vue de type *Panneau*.
 

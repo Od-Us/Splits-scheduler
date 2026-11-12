@@ -21,7 +21,7 @@
  *       chart: [ambient, setpoint, outdoor]  # courbes du jour (au choix)
  */
 
-const CARD_VERSION = "1.7.1";
+const CARD_VERSION = "1.7.2";
 const ICON_URL = new URL("icon.png", import.meta.url).href;
 
 const GROUP_DEFAULTS = {
@@ -140,6 +140,8 @@ const I18N = {
     no_data_at: "Aucune donnée à cet instant.",
     resume_at: "Reprise",
     resume_now: "Reprendre maintenant",
+    stale: "Version {v} installée, mais ce navigateur affiche encore la carte {c} (cache).",
+    reload: "Recharger",
     earlier: "Reprise 30 minutes plus tôt",
     later: "Reprise 30 minutes plus tard",
     skipped: "{t} {p} ignoré · ensuite {n}",
@@ -252,6 +254,8 @@ const I18N = {
     no_data_at: "No data at this time.",
     resume_at: "Resumes",
     resume_now: "Resume now",
+    stale: "Version {v} is installed, but this browser still shows card {c} (cache).",
+    reload: "Reload",
     earlier: "Resume 30 minutes earlier",
     later: "Resume 30 minutes later",
     skipped: "{t} {p} skipped · then {n}",
@@ -521,9 +525,18 @@ class SplitSchedulerCard extends HTMLElement {
     const groups = this._groupConfigs();
     return `
       <div class="wrap">
+        ${this._renderStale()}
         ${this._renderHeader()}
         <div class="grid">${groups.map((g) => this._renderGroup(g)).join("")}</div>
       </div>`;
+  }
+
+  /** Le navigateur a gardé une ancienne carte alors que l'intégration a été mise à jour. */
+  _renderStale() {
+    const installed = this._info?.version;
+    if (!installed || installed === CARD_VERSION) return "";
+    return `<div class="banner warn"><span>${esc(this._t("stale").replace("{v}", installed).replace("{c}", CARD_VERSION))}</span>
+      <button type="button" class="filled" data-action="reload">${esc(this._t("reload"))}</button></div>`;
   }
 
   _renderHeader() {
@@ -1033,6 +1046,9 @@ class SplitSchedulerCard extends HTMLElement {
       case "profile":
         this._call(hass.callService("select", "select_option", { entity_id: e.profile, option: value }));
         break;
+      case "reload":
+        window.location.reload();
+        break;
       case "resume":
         this._call(hass.callService("button", "press", { entity_id: e.resume }));
         break;
@@ -1367,9 +1383,14 @@ class SplitSchedulerHistory extends HTMLElement {
     const date = (t, o) => new Intl.DateTimeFormat(this._loc(), { timeZone: this._info.time_zone, ...o }).format(new Date(t));
     if (days === 1) ["0 h", "6 h", "12 h", "18 h", "24 h"].forEach((l, i) => ticks.push(`<span style="left:${i * 25}%">${l}</span>`));
     else {
+      // 3 jours : nom du jour au début de la journée, « 12 h » au milieu ; semaine : jour centré dans sa colonne
+      const narrow = mobile && days > 3;
       for (let k = 0; k < days; k++) {
-        ticks.push(`<span style="left:${(k / days * 100).toFixed(2)}%">${esc(date(start + k * DAY + 3600000, { weekday: "short", day: "numeric" }))}</span>`);
-        if (days <= 3) ticks.push(`<span style="left:${((k + 0.5) / days * 100).toFixed(2)}%">12 h</span>`);
+        const label = esc(date(start + k * DAY + 3600000, narrow ? { day: "numeric" } : { weekday: "short", day: "numeric" }));
+        if (days <= 3) {
+          ticks.push(`<span class="start" style="left:${(k / days * 100).toFixed(2)}%">${label}</span>`);
+          ticks.push(`<span style="left:${((k + 0.5) / days * 100).toFixed(2)}%">12 h</span>`);
+        } else ticks.push(`<span style="left:${((k + 0.5) / days * 100).toFixed(2)}%">${label}</span>`);
       }
     }
     return `
@@ -1486,8 +1507,8 @@ const HISTORY_CSS = `
   .xaxis { position: relative; height: 16px; margin-left: 108px; font-size: 11.5px; color: var(--secondary-text-color); }
   .dlg.mobile .xaxis { margin-left: 50px; }
   .xaxis span { position: absolute; transform: translateX(-50%); white-space: nowrap; }
-  .xaxis span:first-child { transform: none; }
-  .xaxis span:last-child:not(:first-child) { transform: translateX(-100%); }
+  .xaxis span.start, .xaxis span[style="left:0%"] { transform: none; }
+  .xaxis span[style="left:100%"] { transform: translateX(-100%); }
   .tip[hidden], .panel[hidden] { display: none; }
   .msg { padding: 40px 0; text-align: center; color: var(--secondary-text-color); }
   .err { color: var(--error-color, #db4437); }

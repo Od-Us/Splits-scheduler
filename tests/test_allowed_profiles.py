@@ -1,10 +1,19 @@
 """Profils autorisés selon le type de planning."""
 
-from pytest_homeassistant_custom_component.common import MockConfigEntry, async_mock_service
+import json
+from pathlib import Path
 
 from homeassistant.core import HomeAssistant
+from pytest_homeassistant_custom_component.common import (
+    MockConfigEntry,
+    async_mock_service,
+)
 
-from custom_components.split_scheduler.const import DOMAIN, default_options, with_positions
+from custom_components.split_scheduler.const import (
+    DOMAIN,
+    default_options,
+    with_positions,
+)
 
 SPLIT = "climate.salon"
 ATTRS = {"hvac_modes": ["off", "heat", "cool"], "temperature": 20, "supported_features": 1}
@@ -96,5 +105,8 @@ async def test_websocket_lists_devices_and_allowed(hass: HomeAssistant, hass_ws_
     await client.send_json_auto_id({"type": "split_scheduler/info"})
     info = (await client.receive_json())["result"]
     assert info["groups"][0]["devices"] == {SPLIT: None}
+    # version installée, comparée par la carte à la sienne (cache du navigateur)
+    manifest = Path(__file__).parents[1] / "custom_components/split_scheduler/manifest.json"
+    assert info["version"] == json.loads(manifest.read_text())["version"]
     normal = next(p for p in info["plannings"] if p["id"] == "normal")
     assert len(normal["allowed_profiles"]) == 10

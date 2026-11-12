@@ -38,6 +38,7 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     """Carte du tableau de bord et API websocket (une fois pour toutes)."""
     websocket.async_register(hass)
     version = (await async_get_integration(hass, DOMAIN)).version
+    hass.data[f"{DOMAIN}_version"] = str(version)
     await hass.http.async_register_static_paths(
         [
             StaticPathConfig(

@@ -75,6 +75,7 @@ def ws_info(
         msg["id"],
         {
             "time_zone": hass.config.time_zone,
+            "version": hass.data.get(f"{DOMAIN}_version"),
             "global_planning": entity("select", f"{entry_id}_global_planning"),
             "outdoor": scheduler.outdoor_entity,
             "groups": [
