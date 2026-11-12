@@ -10,7 +10,8 @@
  *   show_timeline: true
  *   groups:                      # vide = tous les groupes, réglages par défaut
  *     - group: <id du groupe>
- *       temperature_entity: sensor.salon_temperature   # remplace celle du split
+ *       thermometers:                 # thermomètre de chaque split (sinon sa température)
+ *         climate.salon: sensor.salon_temperature
  *       sensors: [sensor.salon_humidite]
  *       sensor_names: { sensor.salon_humidite: Humidité }   # libellés (facultatif)
  *       show_planning: true
@@ -21,11 +22,10 @@
  *       chart: [ambient, setpoint, outdoor]  # courbes du jour (au choix)
  */
 
-const CARD_VERSION = "1.8.0";
+const CARD_VERSION = "1.9.0";
 const ICON_URL = new URL("icon.png", import.meta.url).href;
 
 const GROUP_DEFAULTS = {
-  temperature_entity: "",
   sensors: [],
   show_planning: true,
   show_profiles: true,
@@ -142,6 +142,15 @@ const I18N = {
     resume_now: "Reprendre maintenant",
     stale: "Version {v} installée, mais ce navigateur affiche encore la carte {c} (cache).",
     ovr_n_splits: "Dérogation · {n} splits",
+    t_setpoint_group: "Consigne du groupe",
+    t_ambient_mean: "Ambiance (moyenne)",
+    t_setpoint_held: "Consigne en dérogation",
+    t_ambient_held: "Ambiance en dérogation",
+    mean_n: "moy. {n} splits",
+    held_since: "{s} — dérogation",
+    e_thermo: "Thermomètre de chaque split (vide : température mesurée par le split). L'ambiance affichée est la moyenne des splits qui suivent le programme.",
+    e_thermo_of: "{s} — thermomètre",
+    t_dashed: "Dérogations",
     others_follow: "l'autre split suit le programme|les {n} autres splits suivent le programme",
     instead: "{v} au lieu de {p}",
     diff_targets: "Consignes différentes : {a} à {b} °C",
@@ -267,6 +276,15 @@ const I18N = {
     resume_now: "Resume now",
     stale: "Version {v} is installed, but this browser still shows card {c} (cache).",
     ovr_n_splits: "Override · {n} splits",
+    t_setpoint_group: "Group target",
+    t_ambient_mean: "Ambient (average)",
+    t_setpoint_held: "Overridden target",
+    t_ambient_held: "Overridden ambient",
+    mean_n: "avg. {n} splits",
+    held_since: "{s} — override",
+    e_thermo: "Thermometer of each split (empty: temperature measured by the split). The ambient shown is the average of the splits following the schedule.",
+    e_thermo_of: "{s} — thermometer",
+    t_dashed: "Overrides",
     others_follow: "the other split follows the schedule|the {n} other splits follow the schedule",
     instead: "{v} instead of {p}",
     diff_targets: "Different targets: {a} to {b} °C",
@@ -518,7 +536,7 @@ class SplitSchedulerCard extends HTMLElement {
     const ids = [this._info?.global_planning];
     for (const g of this._groupConfigs()) {
       if (!g.info) continue;
-      ids.push(...Object.values(g.info.entities), ...g.info.climates, g.temperature_entity, ...(g.sensors || []));
+      ids.push(...Object.values(g.info.entities), ...g.info.climates, ...Object.values(thermometers(g, this._hass.states)), ...(g.sensors || []));
     }
     const parts = ids.filter(Boolean).map((id) => {
       const s = this._hass.states[id];
@@ -613,7 +631,9 @@ class SplitSchedulerCard extends HTMLElement {
     const hvac = I18N[lang(this._hass)].hvac;
 
     const pending = this._pending[g.group];
-    const target = pending ?? attrs.temperature;
+    // Grande consigne : celle du groupe (capteur « Consigne »), sinon celle du split de référence
+    const groupTarget = Number(this._state(e.target)?.state);
+    const target = pending ?? (Number.isFinite(groupTarget) ? groupTarget : attrs.temperature);
     let big;
     if (mode === "off") big = `<span class="big word">${esc(hvac.off)}</span>`;
     else if ((target === undefined || target === null) && attrs.target_temp_low != null && attrs.target_temp_high != null) {
@@ -648,12 +668,21 @@ class SplitSchedulerCard extends HTMLElement {
     const statusColor = STATUS_COLORS[status] || STATUS_COLORS.disabled;
 
     // Température ambiante : capteur choisi, sinon celle du split
+    // Ambiance : moyenne des thermomètres des splits qui suivent le programme ; un split en dérogation à part
     let ambient = "";
-    const tempEntity = this._state(g.temperature_entity);
-    if (tempEntity && !Number.isNaN(Number(tempEntity.state))) {
-      ambient = this._chip(ICONS.thermo, this._t("ambient"), `${this._fmt(tempEntity.state)} ${esc(tempEntity.attributes.unit_of_measurement || "°C")}`);
-    } else if (attrs.current_temperature !== undefined && attrs.current_temperature !== null) {
-      ambient = this._chip(ICONS.thermo, this._t(g.temperature_entity ? "split" : "ambient"), `${this._fmt(attrs.current_temperature)} °C`);
+    const thermo = thermometers(g, this._hass.states);
+    const ambientOf = (eid) => {
+      const v = thermo[eid] ? this._state(thermo[eid])?.state : this._state(eid)?.attributes?.current_temperature;
+      return v === undefined || v === null || v === "" || Number.isNaN(Number(v)) ? null : Number(v);
+    };
+    const ambs = followers.map(ambientOf).filter((v) => v !== null);
+    if (ambs.length) {
+      const mean = ambs.reduce((a, b) => a + b, 0) / ambs.length;
+      ambient = `<span class="chip">${svg(ICONS.thermo, 16)}${esc(this._t("ambient"))} <strong>${this._fmt(mean)} °C</strong>${ambs.length > 1 ? ` <span class="small">${esc(this._t("mean_n").replace("{n}", ambs.length))}</span>` : ""}</span>`;
+    }
+    for (const o of splitOvr) {
+      const v = ambientOf(o.entity_id);
+      if (v !== null) ambient += `<span class="chip held">${svg(ICONS.thermo, 16)}${esc(this._splitName(o.entity_id))} <strong>${this._fmt(v)} °C</strong></span>`;
     }
     const extra = (g.sensors || []).map((id) => this._sensorChip(id, g.sensor_names?.[id])).join("") + this._compressorChips(g);
 
@@ -787,19 +816,21 @@ class SplitSchedulerCard extends HTMLElement {
     return (o.ecarts || []).map((x) => this._t("instead").replace("{v}", fmt(x.reglage, x.valeur)).replace("{p}", fmt(x.reglage, x.prevu))).join(", ");
   }
 
-  /** Bandeau compact d'un split en dérogation. */
+  /** Bandeau compact d'un split en dérogation : nom et écart, puis reprise et boutons. */
   _splitBanner(g, o, others) {
     const gid = esc(g.group);
     const eid = esc(o.entity_id);
-    const note = [this._ecarts(o), others > 0 ? plural(this._t("others_follow"), others) : ""].filter(Boolean).join(" · ");
+    const diff = this._ecarts(o);
+    const follow = others > 0 ? plural(this._t("others_follow"), others) : "";
     return `<div class="banner warn compact">
+        <div class="small head"><b class="who">${esc(this._splitName(o.entity_id))}</b>${diff ? ` · ${esc(diff)}` : ""}</div>
         <div class="row">
-          <span class="when"><strong class="who">${esc(this._splitName(o.entity_id))}</strong> <span class="small">${esc(this._t("resume_at").toLowerCase())}</span> <strong>${o.reprise ? esc(this._time(o.reprise)) : "–"}</strong></span>
+          <span class="when"><span class="small">${esc(this._t("resume_at"))}</span> <strong>${o.reprise ? esc(this._time(o.reprise)) : "–"}</strong></span>
           ${o.reprise ? `<button type="button" class="shift" data-action="shift" data-group="${gid}" data-entity="${eid}" data-value="-30" aria-label="${esc(this._t("earlier"))}">−30min</button>
           <button type="button" class="shift" data-action="shift" data-group="${gid}" data-entity="${eid}" data-value="30" aria-label="${esc(this._t("later"))}">+30min</button>` : ""}
           <button type="button" class="filled resume" data-action="split-resume" data-group="${gid}" data-value="${eid}" aria-label="${esc(this._t("split_resume"))}" title="${esc(this._t("split_resume"))}">${svg(ICONS.resume, 20)}</button>
         </div>
-        ${note ? `<span class="small note">${esc(note)}</span>` : ""}
+        ${follow ? `<span class="small note">${esc(follow)}</span>` : ""}
       </div>`;
   }
 
@@ -887,7 +918,7 @@ class SplitSchedulerCard extends HTMLElement {
       legend.push(`<span><i class="lg run"></i>${esc(this._t("t_compressor"))} · ${esc(plural(this._t("t_starts"), starts.length))}</span>`);
     }
     if (chart.length) {
-      rows.push(this._renderChart(history, chart, nowPct, legend));
+      rows.push(this._renderChart(g, history, chart, nowPct, legend));
     }
     rows.push(`<div class="ticks">${["0 h", "6 h", "12 h", "18 h", "24 h"].map((l, i) => `<span style="left:${i * 25}%">${l}</span>`).join("")}</div>`);
     if (legend.length) rows.push(`<div class="legend">${legend.join("")}</div>`);
@@ -925,47 +956,72 @@ class SplitSchedulerCard extends HTMLElement {
     return Math.min(100, Math.max(0, ((t - start) / 86400000) * 100));
   }
 
-  _renderChart(history, mode, nowPct, legend) {
-    const H = 60;
+  _renderChart(g, history, mode, nowPct, legend) {
+    const multi = g.info.climates.length > 1;
+    const H = multi ? 120 : 60;
+    const curves = history?.curves;
+    const live = this._liveSample(g);
+    const now = Date.now();
     const series = [];
-    const add = (key, cls, label, step) => {
-      const points = [...(history?.[key] || [])];
-      const live = history?.[`${key}Live`]?.();
-      if (live !== undefined && live !== null) points.push([Date.now(), live]);
-      series.push({ points: points.filter(([, v]) => v === null || Number.isFinite(v)), cls, step });
-      legend.push(`<span><i class="lg ${cls}"></i>${esc(label)}</span>`);
-    };
-    if (mode.includes("ambient")) add("ambient", "amb", this._t("t_ambient"), false);
-    if (mode.includes("setpoint")) add("setpoint", "set", this._t("t_setpoint"), true);
-    if (mode.includes("outdoor")) add("outdoor", "out", this._t("t_outdoor"), false);
-    const values = series.flatMap((s) => s.points.map(([, v]) => v)).filter((v) => v !== null);
+    const withLive = (points, v) => [...(points || []), [now, v ?? null]];
+    if (mode.includes("setpoint")) series.push({ points: withLive(curves?.setpoint, live.group), cls: "set", step: true });
+    if (mode.includes("ambient")) series.push({ points: withLive(curves?.ambient, live.mean), cls: "amb", step: false });
+    if (mode.includes("outdoor")) {
+      const v = history?.outdoorLive?.();
+      series.push({ points: [...(history?.outdoor || []), ...(v !== undefined && v !== null ? [[now, v]] : [])], cls: "out", step: false });
+    }
+    // Pointillés : splits en dérogation (dans la journée ou maintenant)
+    const dashed = [];
+    for (const eid of g.info.climates) {
+      const d = curves?.dashed?.[eid];
+      const h = live.held[eid];
+      if (!d?.any && !h) continue;
+      const name = this._splitName(eid);
+      const short = name.length > 10 ? `${name.slice(0, 9)}…` : name;
+      if (mode.includes("setpoint")) dashed.push({ points: withLive(d?.setpoint, h ? h.temp : null), cls: "set dash", step: true, name, short });
+      if (mode.includes("ambient")) dashed.push({ points: withLive(d?.ambient, h ? h.amb : null), cls: "amb dash", step: false, name, short });
+    }
+    if (mode.includes("setpoint")) legend.push(`<span><i class="lg set"></i>${esc(this._t(multi ? "t_setpoint_group" : "t_setpoint"))}</span>`);
+    if (mode.includes("ambient")) legend.push(`<span><i class="lg amb"></i>${esc(this._t(multi ? "t_ambient_mean" : "t_ambient"))}</span>`);
+    if (mode.includes("outdoor")) legend.push(`<span><i class="lg out"></i>${esc(this._t("t_outdoor"))}</span>`);
+    if (dashed.some((d) => d.cls === "set dash")) legend.push(`<span><i class="lg set dash"></i>${esc(this._t("t_setpoint_held"))}</span>`);
+    if (dashed.some((d) => d.cls === "amb dash")) legend.push(`<span><i class="lg amb dash"></i>${esc(this._t("t_ambient_held"))}</span>`);
+    const all = [...series, ...dashed];
+    const values = all.flatMap((x) => x.points.map(([, v]) => v)).filter((v) => v !== null && v !== undefined);
     if (!values.length) return `<div class="chart empty" style="height:${H}px"></div>`;
     let lo = Math.floor(Math.min(...values) - 0.5);
     let hi = Math.ceil(Math.max(...values) + 0.5);
     if (hi - lo < 2) { lo -= 1; hi += 1; }
-    const y = (v) => (H - 4 - ((v - lo) / (hi - lo)) * (H - 8)).toFixed(1);
-    const x = (t) => (this._pct(t, history) * 10).toFixed(1); // viewBox de 1000 de large
-    const paths = series.map((s) => {
+    const y = (v) => (H - 4 - ((v - lo) / (hi - lo)) * (H - 8));
+    const x = (t) => (this._pct(t, history) * 10);
+    const labels = [];
+    const paths = all.map((sr) => {
       let d = "";
       let previous = null;
-      for (const [t, v] of s.points) {
-        if (v === null) { previous = null; continue; }
-        if (previous === null) d += `M${x(t)} ${y(v)}`;
-        else if (s.step) d += `H${x(t)}V${y(v)}`;
-        else d += `L${x(t)} ${y(v)}`;
+      let end = null;
+      for (const [t, v] of sr.points) {
+        if (v === null || v === undefined) { previous = null; continue; }
+        if (previous === null) d += `M${x(t).toFixed(1)} ${y(v).toFixed(1)}`;
+        else if (sr.step) d += `H${x(t).toFixed(1)}V${y(v).toFixed(1)}`;
+        else d += `L${x(t).toFixed(1)} ${y(v).toFixed(1)}`;
         previous = v;
+        end = [x(t), y(v)];
       }
-      return d ? `<path class="${s.cls}" d="${d}"></path>` : "";
+      if (sr.name && end) {
+        labels.push(`<span class="clab ${sr.cls.split(" ")[0]}" style="left:${Math.min(end[0] / 10, 88).toFixed(2)}%;top:${Math.max(end[1] - 15, 0).toFixed(0)}px" title="${esc(sr.name)}">${esc(sr.short)}</span>`);
+      }
+      return d ? `<path class="${sr.cls}" d="${d}"><title>${esc(sr.name || "")}</title></path>` : "";
     }).join("");
     return `
       <div class="chart" style="height:${H}px">
         <svg viewBox="0 0 1000 ${H}" preserveAspectRatio="none" aria-hidden="true">
-          <line class="grid" x1="0" x2="1000" y1="${y(hi)}" y2="${y(hi)}"></line>
-          <line class="grid" x1="0" x2="1000" y1="${y(lo)}" y2="${y(lo)}"></line>
+          <line class="grid" x1="0" x2="1000" y1="${y(hi).toFixed(1)}" y2="${y(hi).toFixed(1)}"></line>
+          <line class="grid" x1="0" x2="1000" y1="${y(lo).toFixed(1)}" y2="${y(lo).toFixed(1)}"></line>
           ${paths}
           <line class="now" x1="${(Number(nowPct) * 10).toFixed(1)}" x2="${(Number(nowPct) * 10).toFixed(1)}" y1="0" y2="${H}"></line>
         </svg>
         <span class="ylab top">${this._fmt(hi, 0)}°</span><span class="ylab bottom">${this._fmt(lo, 0)}°</span>
+        ${labels.join("")}
       </div>`;
   }
 
@@ -986,18 +1042,29 @@ class SplitSchedulerCard extends HTMLElement {
   }
 
   _historyKey(g) {
-    return [g.compressor_timeline, chartSeries(g.chart).join(","), g.temperature_entity, g.info.compressor, this._info.outdoor].join("|");
+    return [g.compressor_timeline, chartSeries(g.chart).join(","), g.temperature_entity, JSON.stringify(g.thermometers || {}), g.info.compressor, this._info.outdoor].join("|");
+  }
+
+  /** Valeurs actuelles des courbes (dernier point, mis à jour en direct). */
+  _liveSample(g) {
+    const states = this._hass.states;
+    const thermo = thermometers(g, states);
+    const num = (v) => (v === undefined || v === null || v === "" || Number.isNaN(Number(v)) ? null : Number(v));
+    const stateOf = (eid) => {
+      const c = states[eid];
+      return c ? { s: c.state, temp: c.state === "off" ? null : num(c.attributes.temperature), cur: num(c.attributes.current_temperature) } : undefined;
+    };
+    const target = states[g.info.entities.target];
+    const group = target ? num(target.state) : stateOf(g.info.climates[0])?.temp ?? null;
+    return sampleAt(g.info.climates, stateOf, (eid) => (thermo[eid] ? num(states[thermo[eid]]?.state) : undefined), group);
   }
 
   async _fetchHistory(g) {
     const now = new Date(Date.now());
     const z = zonedNow(this._info.time_zone, now);
     const midnight = now.getTime() - (z.minutes * 60 + now.getSeconds()) * 1000 - now.getMilliseconds();
-    const climate = g.info.climates[0];
-    const ambientSensor = this._state(g.temperature_entity) ? g.temperature_entity : null;
     const series = chartSeries(g.chart);
-    const wantAmbient = series.includes("ambient");
-    const wantSetpoint = series.includes("setpoint");
+    const wantCurves = series.includes("ambient") || series.includes("setpoint");
     const outdoorEntity = series.includes("outdoor") ? this._info.outdoor : null;
     const wantCompressor = g.compressor_timeline && g.info.compressor;
     const base = {
@@ -1007,36 +1074,20 @@ class SplitSchedulerCard extends HTMLElement {
       include_start_time_state: true,
       significant_changes_only: false,
     };
-    const sensors = [wantCompressor ? g.info.compressor : null, wantAmbient && ambientSensor ? ambientSensor : null, outdoorEntity].filter(Boolean);
-    const needClimate = wantSetpoint || (wantAmbient && !ambientSensor);
+    const curve = curveEntities(g, this._hass.states);
+    const minimal = [...new Set([wantCompressor ? g.info.compressor : null, outdoorEntity, ...(wantCurves ? curve.minimal : [])].filter(Boolean))];
     const [sensorRows, climateRows] = await Promise.all([
-      sensors.length ? this._hass.callWS({ ...base, entity_ids: sensors, minimal_response: true, no_attributes: true }) : {},
-      needClimate ? this._hass.callWS({ ...base, entity_ids: [climate], minimal_response: false, no_attributes: false }) : {},
+      minimal.length ? this._hass.callWS({ ...base, entity_ids: minimal, minimal_response: true, no_attributes: true }) : {},
+      wantCurves ? this._hass.callWS({ ...base, entity_ids: curve.full, minimal_response: false, no_attributes: false }) : {},
     ]);
     const time = (e) => Math.max(midnight, ((e.lu ?? e.lc) || 0) * 1000);
     const num = (v) => (v === undefined || v === null || v === "" || Number.isNaN(Number(v)) ? null : Number(v));
     const result = { fetched: Date.now(), key: this._historyKey(g), midnight, compEntity: wantCompressor ? g.info.compressor : null };
     if (wantCompressor) result.comp = (sensorRows[g.info.compressor] || []).map((e) => [time(e), e.s]);
-    const climateStates = climateRows[climate] || [];
-    if (wantAmbient) {
-      if (ambientSensor) {
-        result.ambient = (sensorRows[ambientSensor] || []).map((e) => [time(e), num(e.s)]);
-        result.ambientLive = () => num(this._state(ambientSensor)?.state);
-      } else {
-        result.ambient = climateStates.map((e) => [time(e), num(e.a?.current_temperature)]);
-        result.ambientLive = () => num(this._state(climate)?.attributes.current_temperature);
-      }
-    }
+    if (wantCurves) result.curves = groupCurves(g, climateRows, sensorRows, curve.thermo, time, num);
     if (outdoorEntity) {
       result.outdoor = (sensorRows[outdoorEntity] || []).map((e) => [time(e), num(e.s)]);
       result.outdoorLive = () => num(this._state(outdoorEntity)?.state);
-    }
-    if (wantSetpoint) {
-      result.setpoint = climateStates.map((e) => [time(e), e.s === "off" ? null : num(e.a?.temperature)]);
-      result.setpointLive = () => {
-        const c = this._state(climate);
-        return c && c.state !== "off" ? num(c.attributes.temperature) : null;
-      };
     }
     return result;
   }
@@ -1280,6 +1331,79 @@ function valueAt(series, t) {
   return found;
 }
 
+/** Écart toléré entre la consigne d'un split et celle du groupe (comme l'intégration). */
+const TOLERANCE = 0.3;
+
+/** Thermomètre de chaque split : choisi par split, sinon l'ancien capteur unique du groupe. */
+function thermometers(g, states) {
+  const chosen = g.thermometers || {};
+  const legacy = !Object.keys(chosen).length && g.temperature_entity && states[g.temperature_entity] && !g.temperature_entity.startsWith("climate.")
+    ? g.temperature_entity : null;
+  return Object.fromEntries(g.info.climates.map((eid) => [eid, chosen[eid] || legacy || null]));
+}
+
+/** Requêtes d'historique nécessaires aux courbes d'un groupe. */
+function curveEntities(g, states) {
+  const thermo = thermometers(g, states);
+  return {
+    thermo,
+    full: [...g.info.climates],
+    minimal: [g.info.entities.target, ...Object.values(thermo)].filter(Boolean),
+  };
+}
+
+/**
+ * Courbes d'un groupe à partir de l'historique :
+ *  - setpoint : consigne du groupe (capteur « Consigne » ; avant lui, celle du premier split) ;
+ *  - ambient : moyenne des thermomètres des splits qui suivent le programme ;
+ *  - dashed : pour chaque split en dérogation (consigne différente de celle du groupe),
+ *    sa consigne et son ambiance, null en dehors des dérogations.
+ */
+function groupCurves(g, full, minimal, thermo, time, num) {
+  const climates = g.info.climates;
+  const split = Object.fromEntries(climates.map((eid) => [eid, (full[eid] || []).map((e) => [time(e), {
+    s: e.s, temp: e.s === "off" ? null : num(e.a?.temperature), cur: num(e.a?.current_temperature),
+  }])]));
+  const thermoRows = Object.fromEntries(Object.entries(thermo).filter(([, id]) => id).map(([eid, id]) => [eid, (minimal[id] || []).map((e) => [time(e), num(e.s)])]));
+  const targetRows = g.info.entities.target ? (minimal[g.info.entities.target] || []).map((e) => [time(e), e.s === "unavailable" ? undefined : num(e.s)]) : [];
+  const firstTarget = targetRows.length ? targetRows[0][0] : Infinity;
+  const times = [...new Set([
+    ...targetRows.map(([t]) => t), ...Object.values(split).flatMap((r) => r.map(([t]) => t)),
+    ...Object.values(thermoRows).flatMap((r) => r.map(([t]) => t)),
+  ])].sort((a, b) => a - b);
+  const groupAt = (t) => (t >= firstTarget ? valueAt(targetRows, t) : valueAt(split[climates[0]], t)?.temp) ?? null;
+  const out = { setpoint: [], ambient: [], dashed: Object.fromEntries(climates.map((eid) => [eid, { setpoint: [], ambient: [], any: false }])) };
+  for (const t of times) {
+    const sample = sampleAt(climates, (eid) => valueAt(split[eid], t), (eid) => (thermoRows[eid] ? valueAt(thermoRows[eid], t) : undefined), groupAt(t));
+    out.setpoint.push([t, sample.group]);
+    out.ambient.push([t, sample.mean]);
+    for (const eid of climates) {
+      const d = sample.held[eid];
+      out.dashed[eid].setpoint.push([t, d ? d.temp : null]);
+      out.dashed[eid].ambient.push([t, d ? d.amb : null]);
+      if (d) out.dashed[eid].any = true;
+    }
+  }
+  return out;
+}
+
+/** Valeurs à un instant : consigne du groupe, moyenne des splits qui suivent, splits en dérogation. */
+function sampleAt(climates, stateOf, thermoOf, group) {
+  const held = {};
+  const ambs = [];
+  for (const eid of climates) {
+    const st = stateOf(eid);
+    if (!st || ["unavailable", "unknown"].includes(st.s)) continue;
+    const th = thermoOf(eid);
+    const amb = th !== undefined ? th : st.cur;
+    const deviates = group !== null && group !== undefined
+      && (st.s === "off" || st.temp === null || st.temp === undefined || Math.abs(st.temp - group) > TOLERANCE);
+    if (deviates) held[eid] = { temp: st.temp ?? null, amb: amb ?? null };
+    else if (amb !== null && amb !== undefined) ambs.push(amb);
+  }
+  return { group: group ?? null, mean: ambs.length ? ambs.reduce((a, b) => a + b, 0) / ambs.length : null, n: ambs.length, held };
+}
+
 class SplitSchedulerHistory extends HTMLElement {
   static open(hass, info, group) {
     const dialog = document.createElement("split-scheduler-history");
@@ -1295,7 +1419,7 @@ class SplitSchedulerHistory extends HTMLElement {
     this.attachShadow({ mode: "open" });
     this._period = "day";
     this._offset = 0;
-    this._show = { ambient: true, setpoint: true, outdoor: true };
+    this._show = { ambient: true, setpoint: true, outdoor: true, dashed: true };
     this._data = null;
     this._cursor = null;
     this._onKey = (ev) => { if (ev.key === "Escape") this.close(); };
@@ -1346,9 +1470,8 @@ class SplitSchedulerHistory extends HTMLElement {
     this._render();
     const { start, end, now } = this._range();
     const g = this._g;
-    const climate = g.info.climates[0];
-    const ambientSensor = g.temperature_entity && this._hass.states[g.temperature_entity] ? g.temperature_entity : null;
-    const sensors = [g.info.compressor, ambientSensor, this._info.outdoor].filter(Boolean);
+    const curve = curveEntities(g, this._hass.states);
+    const sensors = [...new Set([g.info.compressor, this._info.outdoor, ...curve.minimal].filter(Boolean))];
     const base = {
       type: "history/history_during_period",
       start_time: new Date(start).toISOString(),
@@ -1359,11 +1482,11 @@ class SplitSchedulerHistory extends HTMLElement {
     try {
       const [sensorRows, fullRows] = await Promise.all([
         sensors.length ? this._hass.callWS({ ...base, entity_ids: sensors, minimal_response: true, no_attributes: true }) : {},
-        this._hass.callWS({ ...base, entity_ids: [climate, g.info.entities.profile].filter(Boolean), minimal_response: false, no_attributes: false }),
+        this._hass.callWS({ ...base, entity_ids: [...curve.full, g.info.entities.profile].filter(Boolean), minimal_response: false, no_attributes: false }),
       ]);
       const time = (e) => Math.max(start, ((e.lu ?? e.lc) || 0) * 1000);
       const num = (v) => (v === undefined || v === null || v === "" || Number.isNaN(Number(v)) ? null : Number(v));
-      const climateRows = fullRows[climate] || [];
+      const curves = groupCurves(g, fullRows, sensorRows, curve.thermo, time, num);
       const profileRows = fullRows[g.info.entities.profile] || [];
       let first = Infinity;
       for (const rows of [...Object.values(sensorRows), ...Object.values(fullRows)]) {
@@ -1371,10 +1494,11 @@ class SplitSchedulerHistory extends HTMLElement {
       }
       this._data = {
         first,
-        ambient: ambientSensor
-          ? (sensorRows[ambientSensor] || []).map((e) => [time(e), num(e.s)])
-          : climateRows.map((e) => [time(e), num(e.a?.current_temperature)]),
-        setpoint: climateRows.map((e) => [time(e), e.s === "off" ? null : num(e.a?.temperature)]),
+        ambient: curves.ambient,
+        setpoint: curves.setpoint,
+        dashed: Object.entries(curves.dashed).filter(([, v]) => v.any).map(([eid, v]) => ({
+          eid, name: this._hass.states[eid]?.attributes?.friendly_name || eid, setpoint: v.setpoint, ambient: v.ambient,
+        })),
         outdoor: this._info.outdoor ? (sensorRows[this._info.outdoor] || []).map((e) => [time(e), num(e.s)]) : [],
         comp: g.info.compressor ? (sensorRows[g.info.compressor] || []).map((e) => [time(e), num(e.s)]) : [],
         profile: profileRows.map((e) => [time(e), { name: e.s, adapted: e.a?.adaptation_exterieure === true }]),
@@ -1420,7 +1544,9 @@ class SplitSchedulerHistory extends HTMLElement {
     else body = this._renderBody(d, { start, end, now, last, pct, days, mobile });
 
     const periods = Object.keys(PERIODS).map((p) => `<button type="button" class="${p === this._period ? "on" : ""}" aria-pressed="${p === this._period}" data-act="period" data-value="${p}">${esc(this._t(`p_${p}`))}</button>`).join("");
-    const toggles = [["ambient", "amb", this._t("t_ambient")], ["setpoint", "set", this._t("t_setpoint")], ...(this._info.outdoor ? [["outdoor", "out", this._t("t_outdoor")]] : [])]
+    const multi = g.info.climates.length > 1;
+    const toggles = [["setpoint", "set", this._t(multi ? "t_setpoint_group" : "t_setpoint")], ["ambient", "amb", this._t(multi ? "t_ambient_mean" : "t_ambient")],
+      ...(d?.dashed?.length ? [["dashed", "set dash", this._t("t_dashed")]] : []), ...(this._info.outdoor ? [["outdoor", "out", this._t("t_outdoor")]] : [])]
       .map(([k, cls, label]) => `<button type="button" class="tog ${this._show[k] ? "on" : ""}" aria-pressed="${this._show[k]}" data-act="toggle" data-value="${k}"><i class="lg ${cls}"></i>${esc(label)}</button>`).join("");
     const since = d && Number.isFinite(d.first) && d.first > start + 60000
       ? `<span class="muted small">${esc(this._t("available_since").replace("{d}", date(d.first, { day: "numeric", month: "long" })))}</span>` : "";
@@ -1480,8 +1606,15 @@ class SplitSchedulerHistory extends HTMLElement {
 
     // Courbes
     const H = mobile ? 250 : 360;
-    const visible = [["ambient", "amb", false], ["setpoint", "set", true], ["outdoor", "out", false]].filter(([k]) => this._show[k] && d[k]?.length);
-    const values = visible.flatMap(([k]) => d[k].map(([, v]) => v)).filter((v) => v !== null);
+    const visible = [["ambient", "amb", false], ["setpoint", "set", true], ["outdoor", "out", false]].filter(([k]) => this._show[k] && d[k]?.length)
+      .map(([k, cls, step]) => ({ points: d[k], cls, step }));
+    if (this._show.dashed) {
+      for (const x of d.dashed || []) {
+        if (this._show.setpoint) visible.push({ points: x.setpoint, cls: "set dash", step: true, name: x.name });
+        if (this._show.ambient) visible.push({ points: x.ambient, cls: "amb dash", step: false, name: x.name });
+      }
+    }
+    const values = visible.flatMap((sr) => sr.points.map(([, v]) => v)).filter((v) => v !== null && v !== undefined);
     let chart = `<div class="msg">${esc(this._t("no_data"))}</div>`;
     if (values.length) {
       let lo = Math.floor(Math.min(...values) - 0.5);
@@ -1492,17 +1625,17 @@ class SplitSchedulerHistory extends HTMLElement {
       hi = Math.ceil(hi / stepY) * stepY;
       const y = (v) => (H - ((v - lo) / (hi - lo)) * H).toFixed(1);
       const x = (t) => (pct(t) * 10).toFixed(1);
-      const paths = visible.map(([k, cls, step]) => {
+      const paths = visible.map(({ points, cls, step, name }) => {
         let path = "";
         let prev = null;
-        for (const [t, v] of [...d[k], [last, d[k].at(-1)?.[1] ?? null]]) {
-          if (v === null) { prev = null; continue; }
+        for (const [t, v] of [...points, [last, points.at(-1)?.[1] ?? null]]) {
+          if (v === null || v === undefined) { prev = null; continue; }
           if (prev === null) path += `M${x(t)} ${y(v)}`;
           else if (step) path += `H${x(t)}V${y(v)}`;
           else path += `L${x(t)} ${y(v)}`;
           prev = v;
         }
-        return path ? `<path class="${cls}" d="${path}"></path>` : "";
+        return path ? `<path class="${cls}" d="${path}">${name ? `<title>${esc(name)}</title>` : ""}</path>` : "";
       }).join("");
       const grid = [];
       const labels = [];
@@ -1564,9 +1697,15 @@ class SplitSchedulerHistory extends HTMLElement {
       const html = `
         <strong class="h">${esc(time(t, { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }))}</strong>
         ${p ? `<span class="r"><span><i class="dot" style="background:${this._profileColor(p.name)}"></i>${esc(p.name)}${p.adapted ? ` <em>(${esc(this._t("adapted_short"))})</em>` : ""}</span></span>` : ""}
-        ${this._show.setpoint ? row("set", this._t("t_setpoint"), valueAt(d.setpoint, t)) : ""}
-        ${this._show.ambient ? row("amb", this._t("t_ambient"), valueAt(d.ambient, t)) : ""}
+        ${this._show.setpoint ? row("set", this._t(this._g.info.climates.length > 1 ? "t_setpoint_group" : "t_setpoint"), valueAt(d.setpoint, t)) : ""}
+        ${this._show.ambient ? row("amb", this._t(this._g.info.climates.length > 1 ? "t_ambient_mean" : "t_ambient"), valueAt(d.ambient, t)) : ""}
         ${this._show.outdoor && this._info.outdoor ? row("out", this._t("t_outdoor"), valueAt(d.outdoor, t)) : ""}
+        ${this._show.dashed ? (d.dashed || []).map((x) => {
+          const sp = valueAt(x.setpoint, t);
+          const am = valueAt(x.ambient, t);
+          if ((sp === null || sp === undefined) && (am === null || am === undefined)) return "";
+          return `<span class="sep"></span><span class="r held"><span>${esc(this._t("held_since").replace("{s}", x.name))}</span></span>${row("set dash", this._t("t_setpoint"), sp)}${row("amb dash", this._t("t_ambient"), am)}`;
+        }).join("") : ""}
         ${this._g.info.compressor && c !== undefined && c !== null ? `<span class="r"><span>${esc(this._t("compressor_band"))}</span><strong>${esc(c > 0 ? `${this._t("running")} · ${Math.round(c)} Hz` : this._t("stopped"))}</strong></span>` : ""}`;
       const empty = !p && [d.setpoint, d.ambient, d.outdoor, d.comp].every((serie) => valueAt(serie, t) == null);
       const content = empty ? `${html}<span class="muted">${esc(this._t("no_data_at"))}</span>` : html;
@@ -1627,7 +1766,8 @@ const HISTORY_CSS = `
   .plot svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
   path { fill: none; stroke-width: 2; vector-effect: non-scaling-stroke; stroke-linejoin: round; }
   path.amb { stroke: var(--primary-color); stroke-width: 2.2; }
-  path.set { stroke: var(--warning-color, #ffa000); stroke-dasharray: 6 3; }
+  path.set { stroke: var(--warning-color, #ffa000); stroke-width: 2.2; }
+  path.dash { stroke-dasharray: 6 4; stroke-width: 1.8; }
   path.out { stroke: var(--error-color, #e53935); stroke-dasharray: 2 3; }
   line.grid { stroke: var(--divider-color); stroke-width: 1; vector-effect: non-scaling-stroke; }
   line.day { stroke: var(--secondary-text-color); stroke-width: 1; vector-effect: non-scaling-stroke; opacity: .35; }
@@ -1640,9 +1780,12 @@ const HISTORY_CSS = `
   .panel .r { flex-direction: column; gap: 2px; }
   .r em { font-style: normal; color: var(--info-color, #039be5); }
   .h { font-size: 13.5px; }
+  .sep { grid-column: 1 / -1; height: 1px; background: var(--divider-color); }
+  .r.held { grid-column: 1 / -1; color: ${mix("var(--warning-color, #ffa000)", 75, "var(--primary-text-color)")}; font-weight: 500; }
   .lg { display: inline-block; width: 14px; height: 0; border-top: 2px solid; margin-right: 6px; vertical-align: middle; }
   .lg.amb { border-color: var(--primary-color); }
-  .lg.set { border-color: var(--warning-color, #ffa000); border-top-style: dashed; }
+  .lg.set { border-color: var(--warning-color, #ffa000); }
+  .lg.dash { border-top-style: dashed; }
   .lg.out { border-color: var(--error-color, #e53935); border-top-style: dotted; }
   .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; vertical-align: middle; }
   .xaxis { position: relative; height: 16px; margin-left: 108px; font-size: 11.5px; color: var(--secondary-text-color); }
@@ -1720,8 +1863,12 @@ const CARD_CSS = `
   .chart svg { display: block; width: 100%; height: 100%; overflow: visible; }
   .chart path { fill: none; stroke-width: 2; vector-effect: non-scaling-stroke; stroke-linejoin: round; }
   .chart path.amb { stroke: var(--primary-color); }
-  .chart path.set { stroke: var(--warning-color, #ffa000); stroke-dasharray: 5 3; }
+  .chart path.set { stroke: var(--warning-color, #ffa000); }
   .chart path.out { stroke: var(--error-color, #e53935); stroke-dasharray: 2 3; }
+  .chart path.dash { stroke-dasharray: 5 4; stroke-width: 1.8; }
+  .clab { position: absolute; font-size: 10.5px; line-height: 14px; font-weight: 500; padding: 0 3px; border-radius: 3px; background: var(--ha-card-background, var(--card-background-color, #fff)); white-space: nowrap; pointer-events: auto; }
+  .clab.set { color: ${mix("var(--warning-color, #ffa000)", 75, "var(--primary-text-color)")}; }
+  .clab.amb { color: ${mix("var(--primary-color)", 80, "var(--primary-text-color)")}; }
   .chart .grid { stroke: var(--divider-color); stroke-width: 1; vector-effect: non-scaling-stroke; }
   .chart .now { stroke: var(--primary-text-color); stroke-width: 1.5; vector-effect: non-scaling-stroke; opacity: .6; }
   .chart.empty { background: ${mix("var(--primary-text-color)", 4)}; border-radius: 6px; }
@@ -1734,10 +1881,12 @@ const CARD_CSS = `
   .splitrow .split { flex: 1; min-width: 0; border-top: 0; background: none; }
   .splitrow.held { background: ${mix("var(--warning-color, #ffa000)", 9, "var(--card-background-color, #fff)")}; box-shadow: inset 3px 0 0 var(--warning-color, #ffa000); }
   .splitrow .resume { width: 40px; min-height: 40px; padding: 0; margin-right: 10px; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .chip.held { background: ${mix("var(--warning-color, #ffa000)", 16)}; }
   .devi { color: ${mix("var(--warning-color, #ffa000)", 75, "var(--primary-text-color)")}; font-weight: 500; }
   .status .ell { overflow: hidden; text-overflow: ellipsis; }
   .status { max-width: 60%; }
-  .banner.compact .who { font-size: 14px; }
+  .banner.compact .who { font-size: 14px; font-weight: 500; }
+  .banner.compact .head { display: block; padding-top: 4px; overflow-wrap: anywhere; }
   .confirm { position: fixed; inset: 0; z-index: 10; display: flex; align-items: center; justify-content: center; padding: 16px; background: rgba(0,0,0,.45); }
   .confirm-box { width: min(420px, 100%); box-sizing: border-box; padding: 20px; border-radius: 20px; background: var(--card-background-color, #fff); color: var(--primary-text-color); box-shadow: 0 10px 30px rgba(0,0,0,.3); display: flex; flex-direction: column; gap: 12px; }
   .confirm-box h3 { margin: 0; font-size: 19px; font-weight: 500; }
@@ -1759,7 +1908,8 @@ const CARD_CSS = `
   .legend span { display: inline-flex; align-items: center; gap: 6px; }
   .lg { display: inline-block; width: 14px; height: 0; border-top: 2px solid; }
   .lg.amb { border-color: var(--primary-color); }
-  .lg.set { border-color: var(--warning-color, #ffa000); border-top-style: dashed; }
+  .lg.set { border-color: var(--warning-color, #ffa000); }
+  .lg.dash { border-top-style: dashed; }
   .lg.out { border-color: var(--error-color, #e53935); border-top-style: dotted; }
   .bigrow { align-items: flex-end; gap: 10px; flex-wrap: wrap; }
   .adapted { display: inline-flex; align-items: center; gap: 5px; height: 24px; margin-bottom: 4px; padding: 0 9px; border-radius: 12px; font-size: 12px; font-weight: 500; background: ${mix("var(--info-color, #039be5)", 16)}; color: ${mix("var(--info-color, #039be5)", 70, "var(--primary-text-color)")}; }
@@ -1926,14 +2076,41 @@ class SplitSchedulerCardEditor extends HTMLElement {
       };
       let shownSensors = [...(group.sensors || [])];
       fillNames(shownSensors, group.sensor_names || {});
-      const keysA = ["temperature_entity", "sensors"];
+      // Thermomètre de chaque split (remplace l'ancien capteur unique « temperature_entity »)
+      const climates = infoById[group.group]?.climates || [];
+      if (climates.length) {
+        const legacy = group.temperature_entity && !String(group.temperature_entity).startsWith("climate.") ? group.temperature_entity : null;
+        const initial = Object.fromEntries(climates.map((eid) => [eid, group.thermometers?.[eid] || (!group.thermometers && legacy) || ""]));
+        const hint = document.createElement("p");
+        hint.className = "hint";
+        hint.textContent = this._t("e_thermo");
+        const thermoForm = this._form(
+          initial,
+          climates.map((eid) => ({ name: eid, selector: { entity: { filter: [{ domain: "sensor", device_class: "temperature" }, { domain: "sensor" }] } } })),
+          (value) => {
+            const list = [...this._config.groups];
+            const item = { ...list[index] };
+            const chosen = Object.fromEntries(Object.entries(value).filter(([eid, v]) => climates.includes(eid) && v));
+            if (Object.keys(chosen).length) item.thermometers = chosen;
+            else delete item.thermometers;
+            delete item.temperature_entity;
+            list[index] = item;
+            this._emit({ ...this._config, groups: list });
+          },
+        );
+        thermoForm.computeLabel = (sch) => this._t("e_thermo_of").replace("{s}", this._hass?.states[sch.name]?.attributes.friendly_name || sch.name);
+        const box = document.createElement("div");
+        box.className = "names";
+        box.append(hint, thermoForm);
+        details.append(box);
+      }
+      const keysA = ["sensors"];
       const pick = (keys, keep) => Object.fromEntries(Object.entries(data).filter(([k]) => keys.includes(k) === keep));
       // Les deux formulaires se partagent la configuration du groupe : chacun n'écrit que ses champs.
       const save = (value, keys) => {
         const list = [...this._config.groups];
         const prev = Object.fromEntries(Object.entries(list[index] || {}).filter(([k]) => !keys.includes(k)));
         const item = { ...prev, group: group.group, ...value };
-        if (!item.temperature_entity) delete item.temperature_entity;
         const sensors = item.sensors || [];
         const names = Object.fromEntries(Object.entries(item.sensor_names || {}).filter(([id]) => sensors.includes(id)));
         if (Object.keys(names).length) item.sensor_names = names;
@@ -1948,7 +2125,6 @@ class SplitSchedulerCardEditor extends HTMLElement {
       details.append(this._form(
         pick(keysA, true),
         [
-          { name: "temperature_entity", label: "e_temp", selector: { entity: { filter: [{ domain: "sensor", device_class: "temperature" }, { domain: "climate" }, { domain: "sensor" }] } } },
           { name: "sensors", label: "e_sensors", selector: { entity: { multiple: true } } },
         ],
         (value) => save(value, keysA),
@@ -1956,7 +2132,7 @@ class SplitSchedulerCardEditor extends HTMLElement {
       details.append(namesBox);
       const keysB = ["show_planning", "show_profiles", "manual", "compressor", "compressor_timeline", "chart"];
       details.append(this._form(
-        pick(keysA, false),
+        pick(keysB, true),
         [
           { name: "show_planning", label: "e_show_planning", selector: { boolean: {} } },
           { name: "show_profiles", label: "e_show_profiles", selector: { boolean: {} } },

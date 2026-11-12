@@ -351,6 +351,9 @@
       },
       "compressor_starts_profile": {
         "name": "Démarrages du compresseur par heure (profil actuel)"
+      },
+      "target": {
+        "name": "Consigne"
       }
     }
   }

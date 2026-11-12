@@ -111,3 +111,26 @@ async def test_card_setting_and_planning_change_clear_split_overrides(hass: Home
                                    {"entity_id": "select.chambres_planning", "option": "Vacances"},
                                    blocking=True)
     assert _overrides(hass) == []
+
+
+async def test_group_target_sensor(hass: HomeAssistant, freezer):
+    entry, _ = await _setup(hass, freezer, datetime(2026, 11, 10, 21, 0, tzinfo=PARIS))
+    scheduler = entry.runtime_data
+
+    def target():
+        return float(hass.states.get("sensor.chambres_consigne").state)
+
+    assert target() == 20.0                      # Confort
+    await _remote(hass, freezer, SPLITS[0], temperature=23)
+    assert target() == 20.0                      # un split en dérogation : la consigne du groupe reste
+    await scheduler.async_manual_settings("chambres", {"temperature": 21.5})
+    assert target() == 21.5                      # réglage depuis la carte : consigne du groupe
+    await scheduler.async_resume("chambres")
+    assert target() == 20.0
+    await hass.services.async_call("select", "select_option",
+                                   {"entity_id": "select.chambres_planning", "option": "Vacances"},
+                                   blocking=True)
+    assert target() == 16.0                      # hors gel, ramené au minimum des splits
+    await hass.services.async_call("switch", "turn_off",
+                                   {"entity_id": "switch.chambres_programmation"}, blocking=True)
+    assert hass.states.get("sensor.chambres_consigne").state == "unknown"

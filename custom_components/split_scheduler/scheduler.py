@@ -118,6 +118,8 @@ class GroupState:
     override_until: datetime | None = None
     # Splits en dérogation individuelle (les autres suivent le programme)
     split_overrides: dict[str, SplitOverride] = field(default_factory=dict)
+    # Réglages faits depuis la carte pendant une dérogation du groupe (consigne, mode)
+    manual_settings: dict[str, Any] = field(default_factory=dict)
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -138,6 +140,7 @@ class GroupState:
             "override_since": self.override_since.isoformat() if self.override_since else None,
             "override_until": self.override_until.isoformat() if self.override_until else None,
             "split_overrides": {eid: o.as_dict() for eid, o in self.split_overrides.items()},
+            "manual_settings": self.manual_settings,
         }
 
 
@@ -186,6 +189,7 @@ class SplitScheduler:
                 hand_set=data.get("hand_set", False),
                 override_since=_parse(data.get("override_since")),
                 override_until=_parse(data.get("override_until")),
+                manual_settings=data.get("manual_settings") or {},
                 split_overrides={
                     eid: SplitOverride(since=since, until=_parse(o.get("until")))
                     for eid, o in (data.get("split_overrides") or {}).items()
@@ -351,6 +355,25 @@ class SplitScheduler:
         if settings.get(ATTR_TEMPERATURE) is not None and state.effective_target is not None:
             settings[ATTR_TEMPERATURE] = state.effective_target
         return settings
+
+    def group_target(self, gid: str) -> float | None:
+        """Consigne du groupe : celle que la programmation impose (profil, adaptation à
+        l'extérieur ou réglage depuis la carte), telle qu'un split l'accepte.
+
+        None quand la programmation est coupée, sans profil, ou en mode arrêt.
+        """
+        state = self.states[gid]
+        if not state.enabled or state.active_profile_id is None:
+            return None
+        settings = {**self._settings_for(gid, state.active_profile_id), **state.manual_settings}
+        if settings.get(ATTR_HVAC_MODE) == "off" or settings.get(ATTR_TEMPERATURE) is None:
+            return None
+        wanted = float(settings[ATTR_TEMPERATURE])
+        for entity_id in self.groups[gid][CONF_CLIMATES]:
+            split = self.hass.states.get(entity_id)
+            if split is not None and split.state not in _NOT_READY:
+                return target_temperature(split.attributes, wanted)  # limites et pas du split
+        return wanted
 
     def adaptation(self, gid: str) -> dict[str, Any]:
         """Informations d'adaptation pour l'affichage."""
@@ -722,6 +745,10 @@ class SplitScheduler:
             state.override = True
             state.hand_set = True
         state.split_overrides.clear()  # le réglage de la carte vaut pour tous les splits
+        if state.override:
+            state.manual_settings.update(
+                {k: v for k, v in settings.items() if k in (ATTR_TEMPERATURE, ATTR_HVAC_MODE)}
+            )
         _LOGGER.info("Groupe « %s » : réglage manuel %s", self.groups[gid]["name"], settings)
         for entity_id in self.groups[gid][CONF_CLIMATES]:
             current = self.hass.states.get(entity_id)
@@ -750,6 +777,7 @@ class SplitScheduler:
             state.override_since = state.override_until = None
         state.override = manual
         state.hand_set = False
+        state.manual_settings = {}
         state.applied_at = dt_util.utcnow()
         state.effective_target = self._target_for(gid, profile)
         state.target_changed_at = state.applied_at

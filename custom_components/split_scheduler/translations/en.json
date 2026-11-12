@@ -351,6 +351,9 @@
       },
       "compressor_starts_profile": {
         "name": "Compressor starts per hour (current profile)"
+      },
+      "target": {
+        "name": "Target temperature"
       }
     }
   }

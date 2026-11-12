@@ -122,6 +122,7 @@ Pour chaque groupe (un appareil par groupe) :
 | `select.<groupe>_planning` | Planning suivi par le groupe. Le changer applique aussitôt le profil du créneau en cours. |
 | `switch.<groupe>_programmation` | Éteint : plus aucun changement automatique. Rallumé : le profil programmé est réappliqué. |
 | `button.<groupe>_reprendre_la_programmation` | Annule une dérogation et réapplique le profil programmé. |
+| `sensor.<groupe>_consigne` | Consigne du groupe (°C) : profil, adaptation à l'extérieur ou réglage depuis la carte ; vide si la programmation est coupée ou le profil en arrêt. Enregistrée pour les courbes (avant son apparition, les courbes reprennent la consigne du premier split). |
 | `sensor.<groupe>_statut` | `Programmé`, `Dérogation`, `Programmation désactivée` ou `Aucun programme`. |
 | `sensor.<groupe>_prochain_changement` | Date du prochain changement ; attribut `prochain_profil`. |
 
@@ -224,8 +225,12 @@ Programmation des splits*. Tout se règle dans son éditeur visuel :
 - titre, choix du planning pour tous les groupes, frise du programme du jour ;
 - les groupes affichés et leur ordre (boutons *Monter* / *Descendre*) ;
 - pour chaque groupe :
-  - **température ambiante affichée** : un capteur de la pièce, qui remplace la
-    température mesurée par le split (souvent faussée) ; vide = celle du split ;
+  - **thermomètre de chaque split** : un capteur de la pièce, qui remplace la
+    température mesurée par le split (souvent faussée) ; vide = celle du split.
+    L'ambiance affichée est la **moyenne des splits qui suivent le programme** ;
+    un split en dérogation a sa propre pastille. Une carte réglée avec l'ancien
+    champ unique « température ambiante » garde ce capteur pour tous les splits
+    du groupe, jusqu'au choix d'un thermomètre par split ;
   - **capteurs supplémentaires** affichés sous l'état (humidité, CO₂…), avec
     un **libellé** au choix pour chacun (vide = nom du capteur) ;
   - **partie « Modifier »** : choix du planning du groupe, choix d'un profil,
@@ -234,11 +239,17 @@ Programmation des splits*. Tout se règle dans son éditeur visuel :
   - **frise du compresseur** (facultative) : sous la frise des profils, une
     bande fine montre les périodes de marche du compresseur aujourd'hui et un
     trait à chaque démarrage, avec leur nombre en légende ;
-  - **courbes du jour** (facultatives) : température ambiante, consigne et/ou
-    température extérieure, de 0 h à 24 h sur le même axe que les frises
-    (60 px de haut). La
-    température ambiante est celle du capteur choisi pour le groupe, sinon
-    celle du split ; la consigne n'est pas tracée quand le split est arrêté.
+  - **courbes du jour** (facultatives) : consigne, ambiance et/ou température
+    extérieure, de 0 h à 24 h sur le même axe que les frises (120 px de haut
+    pour un groupe de plusieurs splits, 60 px sinon). En **trait plein** : la
+    **consigne du groupe** (celle que la programmation impose, même si le
+    premier split est en dérogation) et l'**ambiance moyenne** des splits qui
+    suivent le programme. En **pointillés**, avec le nom du split en bout de
+    trait : la consigne et l'ambiance d'un split **en dérogation**, c'est-à-dire
+    dont la consigne (ou l'arrêt) s'écarte de celle du groupe à cet instant.
+    La vue détaillée trace les mêmes courbes (bouton *Dérogations* pour masquer
+    les pointillés) et donne au curseur les valeurs de chaque split en
+    dérogation.
 
 Un clic sur le **nom du groupe** affiche ses splits (mode, consigne, température
 mesurée, ou « injoignable ») ; un clic sur un split ouvre la fenêtre de son
@@ -280,7 +291,8 @@ show_global_planning: true
 show_timeline: true
 groups:
   - group: 252897f9            # identifiant choisi dans l'éditeur
-    temperature_entity: sensor.salon_temperature
+    thermometers:                 # thermomètre de chaque split (facultatif)
+      climate.salon: sensor.salon_temperature
     sensors: [sensor.salon_humidite]
     sensor_names: {sensor.salon_humidite: Humidité}   # facultatif
     show_planning: true

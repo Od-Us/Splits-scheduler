@@ -6,6 +6,7 @@ from datetime import datetime
 from typing import Any
 
 from homeassistant.components.sensor import SensorDeviceClass, SensorEntity, SensorStateClass
+from homeassistant.const import UnitOfTemperature
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
@@ -23,7 +24,11 @@ async def async_setup_entry(
     scheduler = entry.runtime_data
     entities: list[SensorEntity] = []
     for gid in scheduler.groups:
-        entities += [StatusSensor(scheduler, gid), NextChangeSensor(scheduler, gid)]
+        entities += [
+            StatusSensor(scheduler, gid),
+            NextChangeSensor(scheduler, gid),
+            TargetSensor(scheduler, gid),
+        ]
         if scheduler.groups[gid].get(CONF_COMPRESSOR):
             entities += [
                 CompressorStartsSensor(scheduler, gid, "compressor_starts_24h", 0),
@@ -62,6 +67,23 @@ class NextChangeSensor(GroupEntity, SensorEntity):
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
         return {"prochain_profil": self.scheduler.profile_name(self.group_state.next_profile_id)}
+
+
+class TargetSensor(GroupEntity, SensorEntity):
+    """Consigne du groupe, enregistrée pour les courbes de la carte."""
+
+    _attr_device_class = SensorDeviceClass.TEMPERATURE
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_native_unit_of_measurement = UnitOfTemperature.CELSIUS
+    _attr_suggested_display_precision = 1
+    _attr_icon = "mdi:thermostat"
+
+    def __init__(self, scheduler: SplitScheduler, group_id: str) -> None:
+        super().__init__(scheduler, group_id, "target")
+
+    @property
+    def native_value(self) -> float | None:
+        return self.scheduler.group_target(self.group_id)
 
 
 class CompressorStartsSensor(GroupEntity, SensorEntity):

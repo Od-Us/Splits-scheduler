@@ -35,6 +35,7 @@ _GROUP_ENTITIES = {
     "resume": ("button", "resume"),
     "status": ("sensor", "status"),
     "next_change": ("sensor", "next_change"),
+    "target": ("sensor", "target"),
     "starts_24h": ("sensor", "compressor_starts_24h"),
     "starts_profile": ("sensor", "compressor_starts_profile"),
 }
