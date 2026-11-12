@@ -212,9 +212,11 @@ Programmation des splits*. Tout se règle dans son éditeur visuel :
 - pour chaque groupe :
   - **température ambiante affichée** : un capteur de la pièce, qui remplace la
     température mesurée par le split (souvent faussée) ; vide = celle du split ;
-  - **capteurs supplémentaires** affichés sous l'état (humidité, CO₂…) ;
+  - **capteurs supplémentaires** affichés sous l'état (humidité, CO₂…), avec
+    un **libellé** au choix pour chacun (vide = nom du capteur) ;
   - **partie « Modifier »** : choix du planning du groupe, choix d'un profil,
-    réglages manuels proposés (consigne, ventilateur, oscillation, mode) ;
+    réglages manuels proposés (consigne, mode, ventilateur, préréglage —
+    listes déroulantes —, oscillation) ;
   - **frise du compresseur** (facultative) : sous la frise des profils, une
     bande fine montre les périodes de marche du compresseur aujourd'hui et un
     trait à chaque démarrage, avec leur nombre en légende ;
@@ -225,9 +227,8 @@ Programmation des splits*. Tout se règle dans son éditeur visuel :
     celle du split ; la consigne n'est pas tracée quand le split est arrêté.
 
 Un clic sur le **nom du groupe** affiche ses splits (mode, consigne, température
-mesurée, ou « injoignable ») ; un clic sur un split ouvre la page de son
-appareil (fenêtre de détail du thermostat pour un utilisateur non
-administrateur).
+mesurée, ou « injoignable ») ; un clic sur un split ouvre la fenêtre de son
+thermostat.
 
 Un clic sur les **frises ou les courbes** ouvre une **vue détaillée** : jour,
 3 jours ou semaine, flèches pour remonter dans le temps, frise des profils
@@ -258,6 +259,7 @@ groups:
   - group: 252897f9            # identifiant choisi dans l'éditeur
     temperature_entity: sensor.salon_temperature
     sensors: [sensor.salon_humidite]
+    sensor_names: {sensor.salon_humidite: Humidité}   # facultatif
     show_planning: true
     show_profiles: true
     manual: [temperature, fan_mode, swing_mode]

@@ -12,6 +12,7 @@
  *     - group: <id du groupe>
  *       temperature_entity: sensor.salon_temperature   # remplace celle du split
  *       sensors: [sensor.salon_humidite]
+ *       sensor_names: { sensor.salon_humidite: Humidité }   # libellés (facultatif)
  *       show_planning: true
  *       show_profiles: true
  *       manual: [temperature, fan_mode, swing_mode, hvac_mode]
@@ -20,7 +21,7 @@
  *       chart: [ambient, setpoint, outdoor]  # courbes du jour (au choix)
  */
 
-const CARD_VERSION = "1.6.1";
+const CARD_VERSION = "1.7.0";
 const ICON_URL = new URL("icon.png", import.meta.url).href;
 
 const GROUP_DEFAULTS = {
@@ -84,6 +85,7 @@ const I18N = {
     e_add: "Ajouter un groupe",
     e_temp: "Température ambiante affichée (vide : celle du split)",
     e_sensors: "Capteurs supplémentaires (sous l'état)",
+    e_sensor_names: "Libellés des capteurs supplémentaires (vide = nom du capteur)",
     e_show_planning: "Partie « Modifier » : choix du planning du groupe",
     e_show_profiles: "Partie « Modifier » : choix d'un profil",
     e_manual: "Partie « Modifier » : réglages manuels",
@@ -127,7 +129,7 @@ const I18N = {
     n_splits: "{n} split|{n} splits",
     unreachable: "Injoignable depuis {t}",
     measured: "mesurée",
-    open_split: "Ouvrir la page de l'appareil",
+    open_split: "Ouvrir le thermostat",
     history: "{g} — historique",
     p_day: "Jour", p_3d: "3 jours", p_week: "Semaine",
     prev: "Période précédente", next_p: "Période suivante",
@@ -195,6 +197,7 @@ const I18N = {
     e_add: "Add a group",
     e_temp: "Room temperature shown (empty: the split's)",
     e_sensors: "Extra sensors (below the status)",
+    e_sensor_names: "Extra sensor labels (empty = sensor name)",
     e_show_planning: "“Modify” part: group planning selector",
     e_show_profiles: "“Modify” part: profile selector",
     e_manual: "“Modify” part: manual settings",
@@ -238,7 +241,7 @@ const I18N = {
     n_splits: "{n} split|{n} splits",
     unreachable: "Unreachable since {t}",
     measured: "measured",
-    open_split: "Open the device page",
+    open_split: "Open the thermostat",
     history: "{g} — history",
     p_day: "Day", p_3d: "3 days", p_week: "Week",
     prev: "Previous period", next_p: "Next period",
@@ -586,7 +589,7 @@ class SplitSchedulerCard extends HTMLElement {
     } else if (attrs.current_temperature !== undefined && attrs.current_temperature !== null) {
       ambient = this._chip(ICONS.thermo, this._t(g.temperature_entity ? "split" : "ambient"), `${this._fmt(attrs.current_temperature)} °C`);
     }
-    const extra = (g.sensors || []).map((id) => this._sensorChip(id)).join("") + this._compressorChips(g);
+    const extra = (g.sensors || []).map((id) => this._sensorChip(id, g.sensor_names?.[id])).join("") + this._compressorChips(g);
 
     const nextIso = nextState && !["unknown", "unavailable"].includes(nextState.state) ? nextState.state : null;
     const nextProfile = nextState?.attributes?.prochain_profil;
@@ -694,13 +697,7 @@ class SplitSchedulerCard extends HTMLElement {
   }
 
   _openSplit(g, entityId) {
-    const deviceId = g.info.devices?.[entityId];
-    if (this._hass.user?.is_admin && deviceId) {
-      window.history.pushState(null, "", `/config/devices/device/${deviceId}`);
-      window.dispatchEvent(new CustomEvent("location-changed", { detail: { replace: false } }));
-    } else {
-      this.dispatchEvent(new CustomEvent("hass-more-info", { detail: { entityId }, bubbles: true, composed: true }));
-    }
+    this.dispatchEvent(new CustomEvent("hass-more-info", { detail: { entityId }, bubbles: true, composed: true }));
   }
 
   _chip(icon, label, value) {
@@ -726,15 +723,15 @@ class SplitSchedulerCard extends HTMLElement {
     return chips.join("");
   }
 
-  _sensorChip(entityId) {
+  _sensorChip(entityId, label) {
     const s = this._state(entityId);
-    if (!s) return this._chip(ICONS.gauge, entityId, "–");
+    if (!s) return this._chip(ICONS.gauge, label || entityId, "–");
     const dc = s.attributes.device_class;
     const icon = dc === "temperature" ? ICONS.thermo : dc === "humidity" ? ICONS.drop : ICONS.gauge;
     const value = typeof this._hass.formatEntityState === "function"
       ? this._hass.formatEntityState(s)
       : `${s.state} ${s.attributes.unit_of_measurement || ""}`;
-    return this._chip(icon, s.attributes.friendly_name || entityId, esc(value));
+    return this._chip(icon, label || s.attributes.friendly_name || entityId, esc(value));
   }
 
   _renderTimeline(g, planningName, nextIso, nextProfile, showProfiles) {
@@ -785,7 +782,7 @@ class SplitSchedulerCard extends HTMLElement {
     if (chart.length) {
       rows.push(this._renderChart(history, chart, nowPct, legend));
     }
-    rows.push(`<div class="ticks"><span>0 h</span><span>6 h</span><span>12 h</span><span>18 h</span><span>24 h</span></div>`);
+    rows.push(`<div class="ticks">${["0 h", "6 h", "12 h", "18 h", "24 h"].map((l, i) => `<span style="left:${i * 25}%">${l}</span>`).join("")}</div>`);
     if (legend.length) rows.push(`<div class="legend">${legend.join("")}</div>`);
     return `<div class="timeline" role="button" tabindex="0" data-action="detail" data-group="${esc(g.group)}" aria-label="${esc(this._t("open_detail"))}">${rows.join("")}</div>`;
   }
@@ -976,8 +973,10 @@ class SplitSchedulerCard extends HTMLElement {
       const presets = ["home", "none", "eco", "boost"].filter((p) => offered.includes(p) && !(p === "none" && offered.includes("home")));
       if (manual.includes("preset_mode") && presets.length > 1) {
         const labels = I18N[lang(this._hass)].presets;
-        const buttons = presets.map((p) => `<button type="button" class="${p === a.preset_mode ? "on" : ""}" aria-pressed="${p === a.preset_mode}" data-action="preset_mode" data-group="${esc(g.group)}" data-value="${esc(p)}">${esc(labels[p] || p)}</button>`).join("");
-        rows.push(`<div class="col gap8"><span>${esc(this._t("preset"))}</span><div class="seg full">${buttons}</div></div>`);
+        // Normal = home (ou none) : l'état courant « none » s'affiche aussi comme Normal
+        const current = presets.includes(a.preset_mode) ? a.preset_mode : (["home", "none"].includes(a.preset_mode) ? presets.find((p) => p === "home" || p === "none") : a.preset_mode);
+        const opts = presets.includes(current) || !current ? presets : [current, ...presets];
+        rows.push(this._selectRow(`preset-${g.group}`, this._t("preset"), "preset_mode", g.group, opts, current, (p) => labels[p] || p));
       }
       if (manual.includes("swing_mode") && (a.swing_modes || []).length) {
         rows.push(`<div class="row between"><span>${esc(this._t("swing"))}</span>${this._segmented(a.swing_modes, a.swing_mode, "swing_mode", g.group)}</div>`);
@@ -1545,11 +1544,14 @@ const CARD_CSS = `
   .timeline { display: flex; flex-direction: column; gap: 5px; }
   .bar { position: relative; display: flex; height: 12px; border-radius: 6px; overflow: hidden; }
   .bar b { position: absolute; top: 0; bottom: 0; width: 3px; margin-left: -1px; background: var(--primary-text-color); border-radius: 2px; }
-  .ticks { display: flex; justify-content: space-between; font-size: 11px; color: var(--secondary-text-color); }
+  .ticks { position: relative; height: 14px; font-size: 11px; line-height: 14px; color: var(--secondary-text-color); }
+  .ticks span { position: absolute; top: 0; transform: translateX(-50%); white-space: nowrap; }
+  .ticks span:first-child { transform: none; }
+  .ticks span:last-child { transform: translateX(-100%); }
   .cbar { position: relative; height: 8px; border-radius: 4px; background: ${mix("var(--primary-text-color)", 7)}; overflow: hidden; }
   .cbar i { position: absolute; top: 0; bottom: 0; background: ${mix("var(--primary-color)", 45)}; }
   .cbar u { position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: var(--primary-color); }
-  .cbar b { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--primary-text-color); }
+  .cbar b { position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: var(--primary-text-color); }
   .chart { position: relative; }
   .chart svg { display: block; width: 100%; height: 100%; overflow: visible; }
   .chart path { fill: none; stroke-width: 2; vector-effect: non-scaling-stroke; stroke-linejoin: round; }
@@ -1666,7 +1668,10 @@ class SplitSchedulerCardEditor extends HTMLElement {
     form.schema = schema;
     form.computeLabel = (s) => this._t(s.label || s.name);
     form.computeHelper = (s) => helpers[s.name] || "";
-    form.addEventListener("value-changed", (ev) => onChange(ev.detail.value));
+    form.addEventListener("value-changed", (ev) => {
+      form.data = ev.detail.value;
+      onChange(ev.detail.value);
+    });
     return form;
   }
 
@@ -1716,11 +1721,65 @@ class SplitSchedulerCardEditor extends HTMLElement {
       summary.textContent = names[group.group] || group.group;
       details.append(summary);
       const data = { ...GROUP_DEFAULTS, ...group, chart: chartSeries(group.chart) };
+      delete data.sensor_names;
+      const namesBox = document.createElement("div");
+      namesBox.className = "names";
+      const fillNames = (sensors, names) => {
+        namesBox.replaceChildren();
+        if (!sensors.length) return;
+        const title = document.createElement("p");
+        title.className = "hint";
+        title.textContent = this._t("e_sensor_names");
+        const form = this._form(
+          Object.fromEntries(sensors.map((id) => [id, names[id] || ""])),
+          sensors.map((id) => ({ name: id, selector: { text: {} } })),
+          (value) => {
+            const list = [...this._config.groups];
+            const item = { ...list[index] };
+            const cleaned = Object.fromEntries(Object.entries(value).map(([id, v]) => [id, String(v ?? "").trim()]).filter(([id, v]) => (item.sensors || []).includes(id) && v));
+            if (Object.keys(cleaned).length) item.sensor_names = cleaned;
+            else delete item.sensor_names;
+            list[index] = item;
+            this._emit({ ...this._config, groups: list });
+          },
+        );
+        form.computeLabel = (s) => this._hass?.states[s.name]?.attributes.friendly_name || s.name;
+        namesBox.append(title, form);
+      };
+      let shownSensors = [...(group.sensors || [])];
+      fillNames(shownSensors, group.sensor_names || {});
+      const keysA = ["temperature_entity", "sensors"];
+      const pick = (keys, keep) => Object.fromEntries(Object.entries(data).filter(([k]) => keys.includes(k) === keep));
+      // Les deux formulaires se partagent la configuration du groupe : chacun n'écrit que ses champs.
+      const save = (value, keys) => {
+        const list = [...this._config.groups];
+        const prev = Object.fromEntries(Object.entries(list[index] || {}).filter(([k]) => !keys.includes(k)));
+        const item = { ...prev, group: group.group, ...value };
+        if (!item.temperature_entity) delete item.temperature_entity;
+        const sensors = item.sensors || [];
+        const names = Object.fromEntries(Object.entries(item.sensor_names || {}).filter(([id]) => sensors.includes(id)));
+        if (Object.keys(names).length) item.sensor_names = names;
+        else delete item.sensor_names;
+        list[index] = item;
+        this._emit({ ...this._config, groups: list });
+        if (sensors.join("|") !== shownSensors.join("|")) {
+          shownSensors = [...sensors];
+          fillNames(sensors, names);
+        }
+      };
       details.append(this._form(
-        data,
+        pick(keysA, true),
         [
           { name: "temperature_entity", label: "e_temp", selector: { entity: { filter: [{ domain: "sensor", device_class: "temperature" }, { domain: "climate" }, { domain: "sensor" }] } } },
           { name: "sensors", label: "e_sensors", selector: { entity: { multiple: true } } },
+        ],
+        (value) => save(value, keysA),
+      ));
+      details.append(namesBox);
+      const keysB = ["show_planning", "show_profiles", "manual", "compressor", "compressor_timeline", "chart"];
+      details.append(this._form(
+        pick(keysA, false),
+        [
           { name: "show_planning", label: "e_show_planning", selector: { boolean: {} } },
           { name: "show_profiles", label: "e_show_profiles", selector: { boolean: {} } },
           { name: "manual", label: "e_manual", selector: { select: { multiple: true, mode: "list", options: manualOptions } } },
@@ -1728,13 +1787,7 @@ class SplitSchedulerCardEditor extends HTMLElement {
           { name: "compressor_timeline", label: "e_compressor_timeline", selector: { boolean: {} } },
           { name: "chart", label: "e_chart", selector: { select: { multiple: true, mode: "list", options: chartOptions } } },
         ],
-        (value) => {
-          const list = [...this._config.groups];
-          const item = { group: group.group, ...value };
-          if (!item.temperature_entity) delete item.temperature_entity;
-          list[index] = item;
-          this._emit({ ...this._config, groups: list });
-        },
+        (value) => save(value, keysB),
         {
           compressor: this._t(infoById[group.group]?.compressor ? "e_compressor_ok" : "e_compressor_missing"),
           compressor_timeline: infoById[group.group]?.compressor ? "" : this._t("e_compressor_missing"),
@@ -1787,6 +1840,8 @@ const EDITOR_CSS = `
   :host { display: flex; flex-direction: column; gap: 12px; }
   h3 { margin: 12px 0 0; font-size: 15px; font-weight: 500; }
   .hint { margin: 0; color: var(--secondary-text-color); font-size: 13px; }
+  .names { display: flex; flex-direction: column; gap: 6px; margin: 12px 0 4px; }
+  .names:empty { display: none; }
   details { border: 1px solid var(--divider-color); border-radius: 12px; padding: 0 12px; }
   details[open] { padding-bottom: 12px; }
   summary { min-height: 48px; display: flex; align-items: center; font-weight: 500; cursor: pointer; }
