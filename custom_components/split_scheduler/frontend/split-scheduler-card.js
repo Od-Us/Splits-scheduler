@@ -21,7 +21,7 @@
  *       chart: [ambient, setpoint, outdoor]  # courbes du jour (au choix)
  */
 
-const CARD_VERSION = "1.7.0";
+const CARD_VERSION = "1.7.1";
 const ICON_URL = new URL("icon.png", import.meta.url).href;
 
 const GROUP_DEFAULTS = {
@@ -1449,6 +1449,8 @@ const HISTORY_CSS = `
   .muted { color: var(--secondary-text-color); } .small { font-size: 12px; } .center { text-align: center; }
   .bands { display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: 8px 12px; align-items: center; }
   .dlg.mobile .bands { grid-template-columns: 1fr; gap: 4px; }
+  /* même départ que les courbes (colonne des °C : 44 px + 6 px) */
+  .dlg.mobile .pband, .dlg.mobile .cband { margin-left: 50px; }
   .lab { font-size: 12.5px; color: var(--secondary-text-color); }
   .pband { position: relative; height: 22px; border-radius: 6px; background: ${mix("var(--primary-text-color)", 6)}; overflow: hidden; }
   .pband span { position: absolute; top: 0; bottom: 0; }
