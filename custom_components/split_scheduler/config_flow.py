@@ -52,7 +52,9 @@ from .const import (
     CONF_PROGRAMS,
     DOMAIN,
     HVAC_MODES,
+    FEATURES,
     PROFILE_SETTINGS,
+    VERTICAL_SWINGS,
     TITLE,
     WEEKDAY_KEYS,
     allowed_profiles,
@@ -62,6 +64,7 @@ from .const import (
     with_positions,
     lang_of,
 )
+from .features import feature_switches
 from .planning import ProgramError, format_day, normalize, parse_day, profiles_used
 from .scheduler import detect_outdoor_sensor
 
@@ -299,6 +302,9 @@ class SplitSchedulerOptionsFlow(OptionsFlow):
         states = [self.hass.states.get(eid) for eid in sorted(climates)]
         return [st for st in states if st] or self.hass.states.async_all("climate")
 
+    def _group_climates(self) -> list[str]:
+        return sorted({eid for g in self.opts[CONF_GROUPS].values() for eid in g[CONF_CLIMATES]})
+
     def _known_modes(self, list_attr: str) -> list[str]:
         """Valeurs annoncées par les thermostats (ex. fan_modes de Faikout)."""
         found: list[str] = []
@@ -319,14 +325,20 @@ class SplitSchedulerOptionsFlow(OptionsFlow):
                 errors["name"] = "name_required"
             elif self._name_taken(CONF_PROFILES, name, profile_id):
                 errors["name"] = "name_taken"
+            elif user_input.get("comfort") == "on" and user_input.get(ATTR_SWING_MODE) in VERTICAL_SWINGS:
+                errors["comfort"] = "comfort_swing"  # le flux confort coupe l'oscillation verticale
             else:
                 profile: dict[str, Any] = {"name": name}
                 for setting in PROFILE_SETTINGS:
                     value = user_input.get(setting)
-                    if value not in (None, ""):
-                        profile[setting] = (
-                            float(value) if setting == ATTR_TEMPERATURE else str(value)
-                        )
+                    if value in (None, ""):
+                        continue
+                    if setting in FEATURES:
+                        profile[setting] = value == "on"
+                    elif setting == ATTR_TEMPERATURE:
+                        profile[setting] = float(value)
+                    else:
+                        profile[setting] = str(value)
                 if user_input.get(ATTR_OUTDOOR_DELTA) not in (None, ""):
                     profile[ATTR_OUTDOOR_DELTA] = float(user_input[ATTR_OUTDOOR_DELTA])
                 new_id = profile_id or _new_id()
@@ -371,6 +383,16 @@ class SplitSchedulerOptionsFlow(OptionsFlow):
                 options=presets, translation_key="preset_mode", mode=SelectSelectorMode.DROPDOWN
             )
         )
+        # Fonctions Daikin : seulement celles qu'au moins un split des groupes possède
+        available = {key for eid in self._group_climates() for key in feature_switches(self.hass, eid)}
+        for key in FEATURES:
+            if key in available or values.get(key) is not None:
+                fields[vol.Optional(key)] = SelectSelector(
+                    SelectSelectorConfig(
+                        options=["on", "off"], translation_key="feature_state",
+                        mode=SelectSelectorMode.DROPDOWN,
+                    )
+                )
         for setting, list_attr in _MODE_LISTS.items():
             fields[vol.Optional(setting)] = SelectSelector(
                 SelectSelectorConfig(
@@ -379,7 +401,8 @@ class SplitSchedulerOptionsFlow(OptionsFlow):
                     mode=SelectSelectorMode.DROPDOWN,
                 )
             )
-        schema = self.add_suggested_values_to_schema(vol.Schema(fields), values)
+        shown = {k: ("on" if v else "off") if k in FEATURES and isinstance(v, bool) else v for k, v in values.items()}
+        schema = self.add_suggested_values_to_schema(vol.Schema(fields), shown)
         return self.async_show_form(
             step_id=step_id,
             data_schema=schema,

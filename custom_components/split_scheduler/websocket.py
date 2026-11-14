@@ -11,6 +11,7 @@ from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import entity_registry as er
 
+from .features import feature_switches
 from .const import (
     ATTR_FAN_MODE,
     ATTR_HVAC_MODE,
@@ -21,6 +22,7 @@ from .const import (
     CONF_COMPRESSOR,
     CONF_PROGRAMS,
     DOMAIN,
+    FEATURES,
     allowed_profiles,
     describe_profile,
     profile_color,
@@ -91,6 +93,11 @@ def ws_info(
                         for eid in group[CONF_CLIMATES]
                     },
                     "compressor": group.get(CONF_COMPRESSOR),
+                    # interrupteurs des fonctions Daikin de chaque split : {climat: {clé: switch}}
+                    "features": {
+                        eid: scheduler.switches.get(eid) or feature_switches(hass, eid)
+                        for eid in group[CONF_CLIMATES]
+                    },
                     "entities": {
                         key: entity(domain, f"{entry_id}_{gid}_{suffix}")
                         for key, (domain, suffix) in _GROUP_ENTITIES.items()
@@ -129,6 +136,7 @@ def ws_info(
         vol.Optional(ATTR_FAN_MODE): str,
         vol.Optional(ATTR_SWING_MODE): str,
         vol.Optional(ATTR_PRESET_MODE): str,
+        **{vol.Optional(key): bool for key in FEATURES},
     }
 )
 @websocket_api.async_response
@@ -142,7 +150,7 @@ async def ws_manual(
         return
     settings = {
         key: msg[key]
-        for key in (ATTR_HVAC_MODE, ATTR_TEMPERATURE, ATTR_FAN_MODE, ATTR_SWING_MODE, ATTR_PRESET_MODE)
+        for key in (ATTR_HVAC_MODE, ATTR_TEMPERATURE, ATTR_FAN_MODE, ATTR_SWING_MODE, ATTR_PRESET_MODE, *FEATURES)
         if key in msg
     }
     if not settings:

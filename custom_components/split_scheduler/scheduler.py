@@ -40,6 +40,7 @@ from .const import (
     CONF_PROFILES,
     CONF_PROGRAMS,
     DOMAIN,
+    FEATURES,
     GRACE_PERIOD,
     STATUS_DISABLED,
     STATUS_NO_PROGRAM,
@@ -58,6 +59,7 @@ from .outdoor import (
     adapt_target,
     round_half,
 )
+from .features import feature_switches
 from .planning import Program, current_occurrence, next_occurrence
 
 _LOGGER = logging.getLogger(__name__)
@@ -162,8 +164,11 @@ class SplitScheduler:
         self._pending: dict[str, tuple[str, str]] = {}  # entity_id -> (groupe, profil)
         self._listeners: list[Callable[[], None]] = []
         self.outdoor_entity: str | None = options.get(CONF_SETTINGS, {}).get(CONF_OUTDOOR)
+        # Interrupteurs des fonctions Daikin de chaque split : {climat: {clé: switch}}
+        self.switches: dict[str, dict[str, str]] = {}
         self.outdoor = OutdoorAverage()
         self._unsubs: list[CALLBACK_TYPE] = []
+        self._switch_owner: dict[str, str] = {}
 
     # ------------------------------------------------------------------ cycle de vie
 
@@ -213,6 +218,13 @@ class SplitScheduler:
         if climates:
             self._unsubs.append(
                 async_track_state_change_event(self.hass, climates, self._on_climate_change)
+            )
+        self.switches = {eid: feature_switches(self.hass, eid) for eid in climates}
+        owners = {sw: eid for eid, found in self.switches.items() for sw in found.values()}
+        if owners:
+            self._switch_owner = owners
+            self._unsubs.append(
+                async_track_state_change_event(self.hass, list(owners), self._on_switch_change)
             )
         compressors = {
             g[CONF_COMPRESSOR]: gid for gid, g in self.groups.items() if g.get(CONF_COMPRESSOR)
@@ -672,7 +684,11 @@ class SplitScheduler:
                     "depuis": ovr.since.isoformat(),
                     "reprise": resume.isoformat() if resume else None,
                     "reprise_choisie": ovr.until is not None,
-                    "ecarts": _differences(current, settings) if current is not None else [],
+                    "ecarts": (
+                        _differences(current, settings, self.feature_states(entity_id))
+                        if current is not None
+                        else []
+                    ),
                 }
             )
         return result
@@ -856,6 +872,23 @@ class SplitScheduler:
                 continue
             await call(service, **{attr: value})
 
+        for key, wanted in profile.items():
+            if key not in FEATURES or wanted is None:
+                continue
+            switch = self.switches.get(entity_id, {}).get(key)
+            current_switch = self.hass.states.get(switch) if switch else None
+            if current_switch is None or current_switch.state in _NOT_READY:
+                _LOGGER.warning(
+                    "%s : fonction « %s » indisponible (interrupteur Faikout absent : "
+                    "activer « HA switches » dans Faikout)", entity_id, key
+                )
+                continue
+            if current_switch.state != ("on" if wanted else "off"):
+                await self.hass.services.async_call(
+                    "switch", "turn_on" if wanted else "turn_off",
+                    {ATTR_ENTITY_ID: switch}, blocking=True,
+                )
+
     # ------------------------------------------------------------------ suivi des splits
 
     @callback
@@ -876,22 +909,66 @@ class SplitScheduler:
 
         if old is None or old.state in _NOT_READY:
             return
+        self._check_split(entity_id)
+
+    @callback
+    def _on_switch_change(self, event: Event[EventStateChangedData]) -> None:
+        """Fonction Daikin changée (télécommande, Faikout) : comme un changement du split."""
+        new, old = event.data["new_state"], event.data["old_state"]
+        if new is None or old is None or new.state in _NOT_READY or old.state in _NOT_READY:
+            return
+        if (owner := self._switch_owner.get(event.data["entity_id"])) is not None:
+            self._check_split(owner)
+
+    def feature_states(self, entity_id: str) -> dict[str, bool]:
+        """État des fonctions Daikin d'un split : {clé: activée}."""
+        result = {}
+        for key, switch in self.switches.get(entity_id, {}).items():
+            st = self.hass.states.get(switch)
+            if st is not None and st.state in ("on", "off"):
+                result[key] = st.state == "on"
+        return result
+
+    @callback
+    def _check_split(self, entity_id: str) -> None:
+        """Un split s'écarte-t-il du profil appliqué ? Alors il passe en dérogation."""
+        new = self.hass.states.get(entity_id)
+        if new is None or new.state in _NOT_READY:
+            return
         now = dt_util.utcnow()
         if any(entity_id in st.split_overrides for st in self.states.values()):
             self._notify()  # écarts affichés pour ce split : à jour
+        features = self.feature_states(entity_id)
         for gid, group in self.groups.items():
             state = self.states[gid]
-            if (
-                entity_id not in group[CONF_CLIMATES]
-                or not state.enabled
-                or state.override
-                or entity_id in state.split_overrides
-                or state.active_profile_id is None
-                or (state.applied_at is not None and now - state.applied_at < GRACE_PERIOD)
-            ):
+            if entity_id not in group[CONF_CLIMATES] or not state.enabled:
+                continue
+            if state.applied_at is not None and now - state.applied_at < GRACE_PERIOD:
+                continue
+            single = len(group[CONF_CLIMATES]) == 1
+            if state.override:
+                if single and state.hand_set:
+                    # Groupe d'un seul split en dérogation : la consigne du groupe suit le split
+                    state.manual_settings = _manual_from(new)
+                    self._changed()
+                continue
+            if entity_id in state.split_overrides or state.active_profile_id is None:
                 continue
             profile = self._settings_for(gid, state.active_profile_id)
-            if _deviates(new, profile):
+            if not _deviates(new, profile, features):
+                continue
+            if single:
+                _LOGGER.info(
+                    "Groupe « %s » : réglage manuel détecté sur %s (seul split du groupe), "
+                    "groupe en dérogation jusqu'au prochain créneau",
+                    group["name"],
+                    entity_id,
+                )
+                state.override_since = now
+                state.override = True
+                state.hand_set = True
+                state.manual_settings = _manual_from(new)
+            else:
                 _LOGGER.info(
                     "Groupe « %s » : réglage manuel détecté sur %s, ce split seul est en "
                     "dérogation jusqu'au prochain créneau",
@@ -899,36 +976,25 @@ class SplitScheduler:
                     entity_id,
                 )
                 state.split_overrides[entity_id] = SplitOverride(since=now)
-                self._changed()
+            self._changed()
 
 
-def _deviates(state: State, profile: dict) -> bool:
+def _manual_from(split: State) -> dict[str, Any]:
+    """Consigne et mode d'un split, comme réglage manuel du groupe."""
+    settings: dict[str, Any] = {ATTR_HVAC_MODE: split.state}
+    if (temperature := split.attributes.get("temperature")) is not None:
+        settings[ATTR_TEMPERATURE] = float(temperature)
+    return settings
+
+
+def _deviates(state: State, profile: dict, features: Mapping[str, bool] | None = None) -> bool:
     """Le split s'écarte-t-il des réglages imposés par le profil ?"""
-    attrs = state.attributes
-    hvac_mode = profile.get(ATTR_HVAC_MODE)
-    if hvac_mode is not None and state.state != hvac_mode:
-        return True
-    if state.state == "off":
-        return False
-    temperature = profile.get(ATTR_TEMPERATURE)
-    current = attrs.get("temperature")
-    if (
-        temperature is not None
-        and current is not None
-        and state.state != "fan_only"
-        and abs(float(current) - target_temperature(attrs, temperature)) > TEMPERATURE_TOLERANCE
-    ):
-        return True
-    for setting, attr, choices, _ in _MODE_SETTINGS:
-        value = profile.get(setting)
-        if setting == ATTR_PRESET_MODE and (value == "boost" or attrs.get(attr) == "boost"):
-            continue  # Powerful s'arrête de lui-même au bout d'un moment : pas une dérogation
-        if value is not None and value in attrs.get(choices, []) and attrs.get(attr) != value:
-            return True
-    return False
+    return bool(_differences(state, profile, features))
 
 
-def _differences(state: State, profile: dict) -> list[dict[str, Any]]:
+def _differences(
+    state: State, profile: dict, features: Mapping[str, bool] | None = None
+) -> list[dict[str, Any]]:
     """Réglages du split qui s'écartent du profil : [{reglage, valeur, prevu}]."""
     if state.state in _NOT_READY:
         return []
@@ -947,8 +1013,15 @@ def _differences(state: State, profile: dict) -> list[dict[str, Any]]:
             result.append({"reglage": "temperature", "valeur": float(current), "prevu": wanted})
     for setting, attr, choices, _ in _MODE_SETTINGS:
         value = profile.get(setting)
+        if setting == ATTR_PRESET_MODE and (value == "boost" or attrs.get(attr) == "boost"):
+            continue  # Powerful s'arrête de lui-même au bout d'un moment : pas une dérogation
         if value is not None and value in attrs.get(choices, []) and attrs.get(attr) != value:
             result.append({"reglage": attr, "valeur": attrs.get(attr), "prevu": value})
+    for key in FEATURES:
+        wanted = profile.get(key)
+        current = (features or {}).get(key)
+        if wanted is not None and current is not None and current != wanted:
+            result.append({"reglage": key, "valeur": current, "prevu": wanted})
     return result
 
 

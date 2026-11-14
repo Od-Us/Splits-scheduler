@@ -91,13 +91,21 @@
           "swing_mode": "Swing (vertical)",
           "swing_horizontal_mode": "Horizontal swing",
           "outdoor_max_delta": "Maximum gap to outdoor",
-          "preset_mode": "Split preset"
+          "preset_mode": "Split preset",
+          "comfort": "Comfort airflow 🧸",
+          "streamer": "Streamer purification 🦠",
+          "sensor_mode": "Presence sensor 🙆",
+          "quiet_outdoor": "Quiet outdoor unit 🤫"
         },
         "data_description": {
           "fan_mode": "Values offered by your splits; you can also type one.",
           "temperature": "Ignored in Off and Fan only modes.",
           "outdoor_max_delta": "Cooling: the target never goes more than this gap below the outdoor temperature (1 h average); e.g. 26 °C with a 10 °C gap gives 29 °C when it is 39 °C outside. Heating: the target never goes more than this gap above it. Empty: no adaptation.",
-          "preset_mode": "Values offered by your splits. ECONO limits consumption (and power); Powerful runs the unit at maximum. They exclude each other; Normal turns both off. A split without the value ignores it. Empty: preset unchanged."
+          "preset_mode": "Values offered by your splits. ECONO limits consumption (and power); Powerful runs the unit at maximum. They exclude each other; Normal turns both off. A split without the value ignores it. Empty: preset unchanged.",
+          "comfort": "Avoids blowing directly on people; stops vertical swing. Empty: unchanged.",
+          "streamer": "Breaks down allergens and odours in the filter. Empty: unchanged.",
+          "sensor_mode": "With nobody around, the split shifts its own target. Empty: unchanged.",
+          "quiet_outdoor": "Less noise outside, less power; applies to the whole outdoor unit. Empty: unchanged."
         }
       },
       "profile_edit_pick": {
@@ -117,13 +125,21 @@
           "swing_mode": "Swing (vertical)",
           "swing_horizontal_mode": "Horizontal swing",
           "outdoor_max_delta": "Maximum gap to outdoor",
-          "preset_mode": "Split preset"
+          "preset_mode": "Split preset",
+          "comfort": "Comfort airflow 🧸",
+          "streamer": "Streamer purification 🦠",
+          "sensor_mode": "Presence sensor 🙆",
+          "quiet_outdoor": "Quiet outdoor unit 🤫"
         },
         "data_description": {
           "fan_mode": "Values offered by your splits; you can also type one.",
           "temperature": "Ignored in Off and Fan only modes.",
           "outdoor_max_delta": "Cooling: the target never goes more than this gap below the outdoor temperature (1 h average); e.g. 26 °C with a 10 °C gap gives 29 °C when it is 39 °C outside. Heating: the target never goes more than this gap above it. Empty: no adaptation.",
-          "preset_mode": "Values offered by your splits. ECONO limits consumption (and power); Powerful runs the unit at maximum. They exclude each other; Normal turns both off. A split without the value ignores it. Empty: preset unchanged."
+          "preset_mode": "Values offered by your splits. ECONO limits consumption (and power); Powerful runs the unit at maximum. They exclude each other; Normal turns both off. A split without the value ignores it. Empty: preset unchanged.",
+          "comfort": "Avoids blowing directly on people; stops vertical swing. Empty: unchanged.",
+          "streamer": "Breaks down allergens and odours in the filter. Empty: unchanged.",
+          "sensor_mode": "With nobody around, the split shifts its own target. Empty: unchanged.",
+          "quiet_outdoor": "Less noise outside, less power; applies to the whole outdoor unit. Empty: unchanged."
         }
       },
       "profile_delete": {
@@ -291,7 +307,8 @@
       "allowed_required": "Tick at least one profile.",
       "allowed_in_use": "Profile used in this planning's program: {used}. Remove it from those lines first.",
       "copy_target_required": "Choose at least one planning and one group (other than the original schedule).",
-      "copy_not_allowed": "Cannot copy: some profiles of this schedule are not allowed in these plannings: {refused}. Allow them in the planning type, or remove these plannings."
+      "copy_not_allowed": "Cannot copy: some profiles of this schedule are not allowed in these plannings: {refused}. Allow them in the planning type, or remove these plannings.",
+      "comfort_swing": "Not compatible with vertical swing (V or H+V): comfort airflow stops it."
     }
   },
   "selector": {
@@ -323,6 +340,12 @@
         "none": "Normal",
         "eco": "ECONO",
         "boost": "Powerful"
+      }
+    },
+    "feature_state": {
+      "options": {
+        "on": "On",
+        "off": "Off"
       }
     }
   },

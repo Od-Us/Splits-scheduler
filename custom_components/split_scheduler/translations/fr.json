@@ -91,13 +91,21 @@
           "swing_mode": "Oscillation (verticale)",
           "swing_horizontal_mode": "Oscillation horizontale",
           "outdoor_max_delta": "Écart maximal avec l'extérieur",
-          "preset_mode": "Préréglage du split"
+          "preset_mode": "Préréglage du split",
+          "comfort": "Flux d'air confort 🧸",
+          "streamer": "Purification Streamer 🦠",
+          "sensor_mode": "Capteur de présence 🙆",
+          "quiet_outdoor": "Unité extérieure silencieuse 🤫"
         },
         "data_description": {
           "fan_mode": "Valeurs proposées par vos splits ; vous pouvez aussi en saisir une.",
           "temperature": "Ignorée en mode Arrêt et Ventilation seule.",
           "outdoor_max_delta": "Climatisation : la consigne ne descend jamais à plus de cet écart sous la température extérieure (moyenne sur 1 h) ; par exemple 26 °C et 10 °C d'écart donnent 29 °C quand il fait 39 °C dehors. Chauffage : la consigne ne monte jamais à plus de cet écart au-dessus. Vide : pas d'adaptation.",
-          "preset_mode": "Valeurs proposées par vos splits. ECONO limite la consommation (et la puissance) ; Powerful pousse l'appareil au maximum. Les deux s'excluent ; Normal les coupe. Un split qui ne gère pas la valeur l'ignore. Vide : préréglage inchangé."
+          "preset_mode": "Valeurs proposées par vos splits. ECONO limite la consommation (et la puissance) ; Powerful pousse l'appareil au maximum. Les deux s'excluent ; Normal les coupe. Un split qui ne gère pas la valeur l'ignore. Vide : préréglage inchangé.",
+          "comfort": "Évite le souffle direct sur les occupants ; coupe l'oscillation verticale. Vide : ne pas modifier.",
+          "streamer": "Décompose allergènes et odeurs dans le filtre. Vide : ne pas modifier.",
+          "sensor_mode": "Sans présence, le split décale lui-même sa consigne. Vide : ne pas modifier.",
+          "quiet_outdoor": "Moins de bruit dehors, moins de puissance ; vaut pour toute l'unité extérieure. Vide : ne pas modifier."
         }
       },
       "profile_edit_pick": {
@@ -117,13 +125,21 @@
           "swing_mode": "Oscillation (verticale)",
           "swing_horizontal_mode": "Oscillation horizontale",
           "outdoor_max_delta": "Écart maximal avec l'extérieur",
-          "preset_mode": "Préréglage du split"
+          "preset_mode": "Préréglage du split",
+          "comfort": "Flux d'air confort 🧸",
+          "streamer": "Purification Streamer 🦠",
+          "sensor_mode": "Capteur de présence 🙆",
+          "quiet_outdoor": "Unité extérieure silencieuse 🤫"
         },
         "data_description": {
           "fan_mode": "Valeurs proposées par vos splits ; vous pouvez aussi en saisir une.",
           "temperature": "Ignorée en mode Arrêt et Ventilation seule.",
           "outdoor_max_delta": "Climatisation : la consigne ne descend jamais à plus de cet écart sous la température extérieure (moyenne sur 1 h) ; par exemple 26 °C et 10 °C d'écart donnent 29 °C quand il fait 39 °C dehors. Chauffage : la consigne ne monte jamais à plus de cet écart au-dessus. Vide : pas d'adaptation.",
-          "preset_mode": "Valeurs proposées par vos splits. ECONO limite la consommation (et la puissance) ; Powerful pousse l'appareil au maximum. Les deux s'excluent ; Normal les coupe. Un split qui ne gère pas la valeur l'ignore. Vide : préréglage inchangé."
+          "preset_mode": "Valeurs proposées par vos splits. ECONO limite la consommation (et la puissance) ; Powerful pousse l'appareil au maximum. Les deux s'excluent ; Normal les coupe. Un split qui ne gère pas la valeur l'ignore. Vide : préréglage inchangé.",
+          "comfort": "Évite le souffle direct sur les occupants ; coupe l'oscillation verticale. Vide : ne pas modifier.",
+          "streamer": "Décompose allergènes et odeurs dans le filtre. Vide : ne pas modifier.",
+          "sensor_mode": "Sans présence, le split décale lui-même sa consigne. Vide : ne pas modifier.",
+          "quiet_outdoor": "Moins de bruit dehors, moins de puissance ; vaut pour toute l'unité extérieure. Vide : ne pas modifier."
         }
       },
       "profile_delete": {
@@ -291,7 +307,8 @@
       "allowed_required": "Cochez au moins un profil.",
       "allowed_in_use": "Profil utilisé dans le programme de ce planning : {used}. Retirez-le d'abord des lignes concernées.",
       "copy_target_required": "Choisissez au moins un planning et un groupe (autre que le programme d'origine).",
-      "copy_not_allowed": "Copie impossible : des profils du programme ne sont pas autorisés dans ces plannings : {refused}. Autorisez-les dans le type de planning, ou retirez ces plannings."
+      "copy_not_allowed": "Copie impossible : des profils du programme ne sont pas autorisés dans ces plannings : {refused}. Autorisez-les dans le type de planning, ou retirez ces plannings.",
+      "comfort_swing": "Incompatible avec une oscillation verticale (V ou H+V) : le flux confort la coupe."
     }
   },
   "selector": {
@@ -323,6 +340,12 @@
         "none": "Normal",
         "eco": "ECONO",
         "boost": "Powerful"
+      }
+    },
+    "feature_state": {
+      "options": {
+        "on": "Activé",
+        "off": "Désactivé"
       }
     }
   },

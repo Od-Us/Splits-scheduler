@@ -73,6 +73,17 @@ Sur la carte de l'intégration, cliquer sur **Configurer**. Un menu propose :
   Powerful pousse l'appareil au maximum ; les deux s'excluent et *Normal* les
   coupe. Un split sans la valeur l'ignore. Powerful s'arrêtant de lui-même au
   bout d'un moment, son arrêt n'est pas pris pour une dérogation.
+- **Fonctions Daikin** (dans chaque profil) : *Flux d'air confort* 🧸,
+  *Purification Streamer* 🦠, *Capteur de présence* 🙆, *Unité extérieure
+  silencieuse* 🤫 — *Activé*, *Désactivé* ou vide (ne pas modifier). Elles sont
+  réglées par les interrupteurs que Faikout publie dans Home Assistant (option
+  **« HA switches »** à activer dans Faikout) ; seules celles qu'au moins un split
+  possède sont proposées, et un split qui n'a pas la fonction l'ignore (message
+  dans le journal). Le flux confort coupe l'oscillation verticale : un profil
+  qui demande les deux est refusé. Le capteur de présence n'est pas lisible
+  dans Home Assistant (Faikout ne remonte que l'activation du mode, pas la
+  détection) ; si le split change sa consigne à cause de lui, c'est une
+  dérogation.
 - **Profils de fonctionnement** : un champ laissé vide n'est *pas modifié* sur
   les splits. Par exemple, un profil qui ne fixe que la consigne garde le mode
   en cours. Les vitesses de ventilateur et les oscillations proposées sont
@@ -148,8 +159,9 @@ création des entités ; ils se retrouvent dans la page de l'appareil.
   `derogation_depuis` sur le sélecteur de profil.
 - **Réglage sur un split** (télécommande, fenêtre de son thermostat) : si un
   split s'écarte du profil appliqué (mode, consigne à plus de 0,3 °C près,
-  ventilateur, oscillation, préréglage) plus de 2 minutes après l'envoi,
-  **ce split seul** passe en dérogation ; les autres splits du groupe
+  ventilateur, oscillation, préréglage, fonctions Daikin) plus de 2 minutes
+  après l'envoi, **ce split seul** passe en dérogation (pour un groupe d'un seul
+  split, c'est **tout le groupe**, dont la consigne suit alors celle du split) ; les autres splits du groupe
   continuent de suivre les créneaux et l'adaptation à l'extérieur. Il reprend
   au prochain créneau, ou à l'heure choisie avec ses boutons −30min / +30min,
   ou avec son bouton de reprise (bandeau ou liste des splits). Attribut
@@ -239,7 +251,11 @@ Programmation des splits*. Tout se règle dans son éditeur visuel :
     un **libellé** au choix pour chacun (vide = nom du capteur) ;
   - **partie « Modifier »** : choix du planning du groupe, choix d'un profil,
     réglages manuels proposés (consigne, mode, ventilateur, préréglage —
-    listes déroulantes —, oscillation) ;
+    listes déroulantes —, oscillation) ; **Fonctions Daikin** (flux confort,
+    Streamer, présence, extérieur silencieux, Powerful) en interrupteurs,
+    affichés seulement pour les groupes dont un split possède la fonction ;
+    les fonctions actives apparaissent aussi en pastilles sous la consigne et
+    en icônes dans la liste des splits ;
   - **frise du compresseur** (facultative) : sous la frise des profils, une
     bande fine montre les périodes de marche du compresseur aujourd'hui et un
     trait à chaque démarrage, avec leur nombre en légende ;

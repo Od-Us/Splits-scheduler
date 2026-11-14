@@ -38,6 +38,16 @@ ATTR_SWING_HORIZONTAL_MODE = "swing_horizontal_mode"
 # Préréglage du split (Faikout : home = normal, eco = ECONO, boost = Powerful)
 ATTR_PRESET_MODE = "preset_mode"
 PRESETS = ["home", "none", "eco", "boost"]
+# Fonctions Daikin pilotées par les interrupteurs que Faikout publie (« HA switches ») :
+# clé du profil -> suffixe de l'unique_id de l'interrupteur (identifiant Faikout + suffixe)
+FEATURES = {
+    "comfort": "comfort",          # flux d'air confort (coupe l'oscillation verticale)
+    "streamer": "streamer",        # purification Flash Streamer
+    "sensor_mode": "sensor",       # capteur de présence
+    "quiet_outdoor": "quiet",      # unité extérieure silencieuse
+}
+# Oscillations qui comprennent le balayage vertical (incompatibles avec le flux confort)
+VERTICAL_SWINGS = ("V", "H+V", "vertical", "both")
 # Écart maximal entre la consigne et la température extérieure (pas un réglage du split)
 ATTR_OUTDOOR_DELTA = "outdoor_max_delta"
 PROFILE_SETTINGS = (
@@ -47,6 +57,7 @@ PROFILE_SETTINGS = (
     ATTR_SWING_MODE,
     ATTR_SWING_HORIZONTAL_MODE,
     ATTR_PRESET_MODE,
+    *FEATURES,
 )
 
 HVAC_MODES = ["off", "heat", "cool", "heat_cool", "auto", "dry", "fan_only"]
@@ -163,6 +174,12 @@ _HVAC_LABELS = {
 
 
 _PRESET_LABELS = {"home": "Normal", "none": "Normal", "eco": "ECONO", "boost": "Powerful"}
+_FEATURE_LABELS = {
+    "fr": {"comfort": "flux confort", "streamer": "Streamer", "sensor_mode": "présence",
+           "quiet_outdoor": "ext. silencieux"},
+    "en": {"comfort": "comfort airflow", "streamer": "Streamer", "sensor_mode": "presence",
+           "quiet_outdoor": "quiet outdoor"},
+}
 
 
 def lang_of(language: str | None) -> str:
@@ -186,6 +203,10 @@ def describe_profile(profile: dict, language: str | None = "fr") -> str:
         parts.append(("oscill. horiz. " if lang == "fr" else "h-swing ") + hswing)
     if (preset := profile.get(ATTR_PRESET_MODE)) is not None:
         parts.append(_PRESET_LABELS.get(preset, preset))
+    for key in FEATURES:
+        if (on := profile.get(key)) is not None:
+            label = _FEATURE_LABELS[lang][key]
+            parts.append(label if on else ("sans " if lang == "fr" else "no ") + label)
     if (delta := profile.get(ATTR_OUTDOOR_DELTA)) is not None:
         value = f"{delta:g}".replace(".", ",") if lang == "fr" else f"{delta:g}"
         parts.append(("écart ext. max " if lang == "fr" else "max outdoor gap ") + f"{value} °C")

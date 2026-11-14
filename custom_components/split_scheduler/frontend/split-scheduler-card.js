@@ -22,7 +22,7 @@
  *       chart: [ambient, setpoint, outdoor]  # courbes du jour (au choix)
  */
 
-const CARD_VERSION = "1.10.2";
+const CARD_VERSION = "1.11.0";
 const ICON_URL = new URL("icon.png", import.meta.url).href;
 
 const GROUP_DEFAULTS = {
@@ -169,6 +169,10 @@ const I18N = {
     preset: "Préréglage",
     m_preset_mode: "Préréglage (Normal, ECONO, Powerful)",
     presets: { home: "Normal", none: "Normal", eco: "ECONO", boost: "Powerful" },
+    features: { comfort: "Flux confort", streamer: "Streamer", sensor_mode: "Présence", quiet_outdoor: "Ext. silencieux", powerful: "Powerful" },
+    feature_long: { comfort: "Flux d'air confort", streamer: "Purification Streamer", sensor_mode: "Capteur de présence", quiet_outdoor: "Unité extérieure silencieuse", powerful: "Powerful" },
+    on_off: ["désactivée", "activée"],
+    daikin: "Fonctions Daikin",
     profiles_band: "Profils",
     compressor_band: "Compresseur",
     starts_period: "{n} démarrage sur la période · {r} démarrage/h en moyenne|{n} démarrages sur la période · {r} démarrage/h en moyenne",
@@ -303,6 +307,10 @@ const I18N = {
     preset: "Preset",
     m_preset_mode: "Preset (Normal, ECONO, Powerful)",
     presets: { home: "Normal", none: "Normal", eco: "ECONO", boost: "Powerful" },
+    features: { comfort: "Comfort air", streamer: "Streamer", sensor_mode: "Presence", quiet_outdoor: "Quiet outdoor", powerful: "Powerful" },
+    feature_long: { comfort: "Comfort airflow", streamer: "Streamer purification", sensor_mode: "Presence sensor", quiet_outdoor: "Quiet outdoor unit", powerful: "Powerful" },
+    on_off: ["off", "on"],
+    daikin: "Daikin functions",
     profiles_band: "Profiles",
     compressor_band: "Compressor",
     starts_period: "{n} start in the period · {r} starts/h on average|{n} starts in the period · {r} starts/h on average",
@@ -536,7 +544,8 @@ class SplitSchedulerCard extends HTMLElement {
     const ids = [this._info?.global_planning];
     for (const g of this._groupConfigs()) {
       if (!g.info) continue;
-      ids.push(...Object.values(g.info.entities), ...g.info.climates, ...Object.values(thermometers(g, this._hass.states)), ...(g.sensors || []));
+      ids.push(...Object.values(g.info.entities), ...g.info.climates, ...Object.values(thermometers(g, this._hass.states)), ...(g.sensors || []),
+        ...Object.values(g.info.features || {}).flatMap((m) => Object.values(m)));
     }
     const parts = ids.filter(Boolean).map((id) => {
       const s = this._hass.states[id];
@@ -658,7 +667,7 @@ class SplitSchedulerCard extends HTMLElement {
       deviations.push(this._t("diff_targets").replace("{a}", this._fmt(Math.min(...temps))).replace("{b}", this._fmt(Math.max(...temps))));
     }
     let statusText = I18N[lang(this._hass)].status[status] || status;
-    if (status === "override" && !groupOverride && splitOvr.length) {
+    if (status === "override" && !groupOverride && splitOvr.length && g.info.climates.length > 1) {
       statusText = splitOvr.length === 1
         ? `${statusText} · ${this._splitName(splitOvr[0].entity_id)}`
         : this._t("ovr_n_splits").replace("{n}", splitOvr.length);
@@ -747,7 +756,7 @@ class SplitSchedulerCard extends HTMLElement {
           <button type="button" class="gname" aria-expanded="${this._splitsOpen.has(g.group)}" data-action="splits" data-group="${esc(g.group)}">
             <h2>${esc(g.info.name)}</h2><span class="muted small">${esc(plural(this._t("n_splits"), g.info.climates.length))}</span>${svg(this._splitsOpen.has(g.group) ? ICONS.up : ICONS.down, 16)}
           </button>
-          <span class="status" style="background:${mix(statusColor, 18)};color:${mix(statusColor, 70, "var(--primary-text-color)")}">${svg(statusIcon, 14)}<span class="ell">${esc(statusText)}</span></span>
+          <span class="status" title="${esc(statusText)}" style="background:${mix(statusColor, 18)};color:${mix(statusColor, 70, "var(--primary-text-color)")}">${svg(statusIcon, 14)}<span class="ell">${esc(statusText)}</span></span>
         </div>
         ${this._splitsOpen.has(g.group) ? this._renderSplits(g, splitOvr) : ""}
         <div class="row between end">
@@ -758,8 +767,14 @@ class SplitSchedulerCard extends HTMLElement {
           <div class="col right">
             ${profile ? `<span class="pchip" style="background:${mix(color, 20)};color:${mix(color, 55, "var(--primary-text-color)")}"><i style="background:${color}"></i>${esc(profile.name)}</span>` : ""}
             <span class="muted small">${esc([hvac[mode] || "", ["eco", "boost"].includes(attrs.preset_mode) ? I18N[lang(this._hass)].presets[attrs.preset_mode] : ""].filter(Boolean).join(" · "))}</span>
+
           </div>
         </div>
+        ${(() => {
+          const L = I18N[lang(this._hass)];
+          const active = this._featureStates(g).filter((f) => f.on && f.key !== "powerful");
+          return active.length ? `<div class="fchips">${active.map((f) => `<span class="fchip" title="${esc(L.feature_long[f.key])}">${FEATURE_ICONS[f.key]} ${esc(L.features[f.key])}</span>`).join("")}</div>` : "";
+        })()}
         ${ambient || extra || outdoorChip ? `<div class="chips">${ambient}${outdoorChip}${extra}</div>` : ""}
         ${banner}
         ${timeline}
@@ -787,6 +802,8 @@ class SplitSchedulerCard extends HTMLElement {
         const parts = [hvac[s.state] || s.state];
         if (a.temperature != null && s.state !== "off") parts.push(`${this._t("setpoint").toLowerCase()} ${this._fmt(a.temperature)} °C`);
         if (a.current_temperature != null) parts.push(`${this._t("measured")} ${this._fmt(a.current_temperature)} °C`);
+        const icons = this._splitFeatureIcons(g, eid);
+        if (icons) parts.push(icons);
         sub = parts.join(" · ");
         if (s.state === "off") color = "var(--disabled-color, #9e9e9e)";
       }
@@ -797,6 +814,32 @@ class SplitSchedulerCard extends HTMLElement {
         ${o ? `<button type="button" class="filled resume" data-action="split-resume" data-group="${esc(g.group)}" data-value="${esc(eid)}" aria-label="${esc(this._t("split_resume"))} : ${esc(name)}" title="${esc(this._t("split_resume"))}">${svg(ICONS.resume, 20)}</button>` : ""}</div>`;
     }).join("");
     return `<div class="splits">${rows}</div>`;
+  }
+
+  /**
+   * Fonctions Daikin proposées pour un groupe : seulement celles qu'au moins un de ses splits
+   * possède. Activée = activée sur tous les splits qui l'ont.
+   */
+  _featureStates(g) {
+    const result = [];
+    const per = g.info.features || {};
+    for (const key of ["comfort", "streamer", "sensor_mode", "quiet_outdoor"]) {
+      const states = g.info.climates.map((eid) => per[eid]?.[key]).filter(Boolean).map((sw) => this._state(sw)?.state);
+      if (states.length) result.push({ key, on: states.every((v) => v === "on") });
+    }
+    const boost = g.info.climates.map((eid) => this._state(eid)).filter((c) => (c?.attributes?.preset_modes || []).includes("boost"));
+    if (boost.length) result.push({ key: "powerful", on: boost.every((c) => c.attributes.preset_mode === "boost") });
+    return result;
+  }
+
+  /** Icônes des fonctions actives d'un split, ex. « 🙆 🤫 ». */
+  _splitFeatureIcons(g, eid) {
+    const icons = [];
+    for (const [key, sw] of Object.entries(g.info.features?.[eid] || {})) {
+      if (this._state(sw)?.state === "on") icons.push(FEATURE_ICONS[key]);
+    }
+    if (this._state(eid)?.attributes?.preset_mode === "boost") icons.push(FEATURE_ICONS.powerful);
+    return icons.join(" ");
   }
 
   _splitName(entityId, st = this._state(entityId)) {
@@ -813,7 +856,9 @@ class SplitSchedulerCard extends HTMLElement {
       if (r === "preset_mode") return L.presets[v] || v;
       return `${this._t({ fan_mode: "fan", swing_mode: "swing" }[r] || r).toLowerCase()} ${v}`;
     };
-    return (o.ecarts || []).map((x) => this._t("instead").replace("{v}", fmt(x.reglage, x.valeur)).replace("{p}", fmt(x.reglage, x.prevu))).join(", ");
+    return (o.ecarts || []).map((x) => (L.features[x.reglage]
+      ? `${L.features[x.reglage]} : ${this._t("instead").replace("{v}", L.on_off[x.valeur ? 1 : 0]).replace("{p}", L.on_off[x.prevu ? 1 : 0])}`
+      : this._t("instead").replace("{v}", fmt(x.reglage, x.valeur)).replace("{p}", fmt(x.reglage, x.prevu)))).join(", ");
   }
 
   /** Bandeau compact d'un split en dérogation : nom et écart, puis reprise et boutons. */
@@ -1144,6 +1189,13 @@ class SplitSchedulerCard extends HTMLElement {
         parts.push(`<div class="col gap10"><span>${esc(this._t("manual"))}${who}</span>${rows.join("")}</div>`);
       }
     }
+    const daikin = this._featureStates(g);
+    if (daikin.length) {
+      const L = I18N[lang(this._hass)];
+      const buttons = daikin.map(({ key, on }) => `<button type="button" class="feat ${on ? "on" : ""}" role="switch" aria-checked="${on}" data-action="feature" data-group="${gid}" data-value="${key}" title="${esc(L.feature_long[key])}">
+        <span class="fi" aria-hidden="true">${FEATURE_ICONS[key]}</span><span class="fl">${esc(L.features[key])}</span><i></i></button>`).join("");
+      parts.push(`<div class="col gap8"><span>${esc(this._t("daikin"))}${g.info.climates.length > 1 ? ` <span class="muted">(${esc(this._t("manual_all"))})</span>` : ""}</span><div class="feats">${buttons}</div></div>`);
+    }
     const sw = this._state(g.info.entities.programming);
     if (sw) {
       const on = sw.state === "on";
@@ -1204,6 +1256,16 @@ class SplitSchedulerCard extends HTMLElement {
       case "confirm-cancel":
         this._closeConfirm();
         break;
+      case "feature": {
+        const item = this._featureStates(g).find((f) => f.key === value);
+        if (!item) break;
+        if (value === "powerful") {
+          const c = g.info.climates.map((eid) => this._state(eid)).find((x) => (x?.attributes?.preset_modes || []).includes("boost"));
+          const normal = (c?.attributes?.preset_modes || []).includes("home") ? "home" : "none";
+          this._manual(group, { preset_mode: item.on ? normal : "boost" });
+        } else this._manual(group, { [value]: !item.on });
+        break;
+      }
       case "split-resume":
         this._call(hass.callWS({ type: "split_scheduler/split_resume", group_id: group, entity_id: value }));
         break;
@@ -1330,6 +1392,9 @@ function valueAt(series, t) {
   }
   return found;
 }
+
+/** Fonctions Daikin (interrupteurs Faikout), dans l'ordre d'affichage. */
+const FEATURE_ICONS = { comfort: "🧸", streamer: "🦠", sensor_mode: "🙆", quiet_outdoor: "🤫", powerful: "💪" };
 
 /** Écart toléré entre la consigne d'un split et celle du groupe (comme l'intégration). */
 const TOLERANCE = 0.3;
@@ -1881,6 +1946,20 @@ const CARD_CSS = `
   .splitrow .split { flex: 1; min-width: 0; border-top: 0; background: none; }
   .splitrow.held { background: ${mix("var(--warning-color, #ffa000)", 9, "var(--card-background-color, #fff)")}; box-shadow: inset 3px 0 0 var(--warning-color, #ffa000); }
   .splitrow .resume { width: 40px; min-height: 40px; padding: 0; margin-right: 10px; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .feats { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
+  .feat { display: flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 10px; border-radius: 12px; border: 1px solid var(--divider-color); background: var(--card-background-color, #fff); color: var(--primary-text-color); font: inherit; font-size: 13.5px; text-align: left; cursor: pointer; }
+  .feat.on { border-color: var(--primary-color); background: ${mix("var(--primary-color)", 10, "var(--card-background-color, #fff)")}; }
+  .feat .fi { font-size: 17px; }
+  .feat .fl { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .feat i { position: relative; width: 32px; height: 18px; border-radius: 9px; background: var(--disabled-color, #bdc1c6); flex-shrink: 0; }
+  .feat i::after { content: ""; position: absolute; top: 2px; left: 2px; width: 14px; height: 14px; border-radius: 50%; background: #fff; transition: left .15s; }
+  .feat.on i { background: var(--primary-color); }
+  .feat.on i::after { left: 16px; }
+  .fchips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: -4px; }
+  .bigrow { white-space: nowrap; }
+  .status { min-width: 0; overflow: hidden; flex-shrink: 1; }
+  .gname { flex-shrink: 0; white-space: nowrap; }
+  .fchip { display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border-radius: 11px; background: ${mix("var(--primary-text-color)", 7)}; font-size: 11.5px; white-space: nowrap; }
   .chip.held { background: ${mix("var(--warning-color, #ffa000)", 16)}; }
   .devi { color: ${mix("var(--warning-color, #ffa000)", 75, "var(--primary-text-color)")}; font-weight: 500; }
   .status .ell { overflow: hidden; text-overflow: ellipsis; }
