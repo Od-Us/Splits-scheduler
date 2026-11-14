@@ -63,6 +63,7 @@ class ProfileSelect(GroupEntity, SelectEntity):
             **self.scheduler.adaptation(self.group_id),
             **self.scheduler.override_info(self.group_id),
             "derogations_splits": self.scheduler.split_overrides_info(self.group_id),
+            "silence_exterieur": self.scheduler.quiet_info(self.group_id),
         }
 
     async def async_select_option(self, option: str) -> None:

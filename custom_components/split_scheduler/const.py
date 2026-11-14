@@ -35,9 +35,10 @@ ATTR_TEMPERATURE = "temperature"
 ATTR_FAN_MODE = "fan_mode"
 ATTR_SWING_MODE = "swing_mode"
 ATTR_SWING_HORIZONTAL_MODE = "swing_horizontal_mode"
-# Préréglage du split (Faikout : home = normal, eco = ECONO, boost = Powerful)
-ATTR_PRESET_MODE = "preset_mode"
-PRESETS = ["home", "none", "eco", "boost"]
+# Unité extérieure silencieuse : interrupteur que Faikout publie sur l'appareil du split
+# (option « HA switches ») ; unique_id = celui du thermostat suivi de « quiet »
+ATTR_QUIET = "quiet_outdoor"
+QUIET_SUFFIX = "quiet"
 # Écart maximal entre la consigne et la température extérieure (pas un réglage du split)
 ATTR_OUTDOOR_DELTA = "outdoor_max_delta"
 PROFILE_SETTINGS = (
@@ -46,7 +47,6 @@ PROFILE_SETTINGS = (
     ATTR_FAN_MODE,
     ATTR_SWING_MODE,
     ATTR_SWING_HORIZONTAL_MODE,
-    ATTR_PRESET_MODE,
 )
 
 HVAC_MODES = ["off", "heat", "cool", "heat_cool", "auto", "dry", "fan_only"]
@@ -72,7 +72,7 @@ STATUSES = [STATUS_SCHEDULED, STATUS_OVERRIDE, STATUS_DISABLED, STATUS_NO_PROGRA
 def default_options() -> dict:
     """Profils et plannings proposés à l'installation (modifiables ensuite)."""
     return {
-        CONF_MIGRATIONS: ["summer_profiles"],
+        CONF_MIGRATIONS: ["summer_profiles", "remove_presets"],
         CONF_GROUPS: {},
         CONF_PROFILES: {
             "hors_gel": {"name": "Hors gel", ATTR_HVAC_MODE: "heat", ATTR_TEMPERATURE: 10.0},
@@ -162,7 +162,6 @@ _HVAC_LABELS = {
 }
 
 
-_PRESET_LABELS = {"home": "Normal", "none": "Normal", "eco": "ECONO", "boost": "Powerful"}
 
 
 def lang_of(language: str | None) -> str:
@@ -184,8 +183,11 @@ def describe_profile(profile: dict, language: str | None = "fr") -> str:
         parts.append(("oscill. " if lang == "fr" else "swing ") + swing)
     if (hswing := profile.get(ATTR_SWING_HORIZONTAL_MODE)) is not None:
         parts.append(("oscill. horiz. " if lang == "fr" else "h-swing ") + hswing)
-    if (preset := profile.get(ATTR_PRESET_MODE)) is not None:
-        parts.append(_PRESET_LABELS.get(preset, preset))
+    if (quiet := profile.get(ATTR_QUIET)) is not None:
+        if lang == "fr":
+            parts.append("ext. silencieux" if quiet else "ext. normal")
+        else:
+            parts.append("quiet outdoor" if quiet else "outdoor normal")
     if (delta := profile.get(ATTR_OUTDOOR_DELTA)) is not None:
         value = f"{delta:g}".replace(".", ",") if lang == "fr" else f"{delta:g}"
         parts.append(("écart ext. max " if lang == "fr" else "max outdoor gap ") + f"{value} °C")
@@ -230,6 +232,7 @@ def with_positions(options: dict) -> dict:
 
 SUMMER_PROFILES = ("confort_ete", "eco_ete")
 MIGRATION_SUMMER_PROFILES = "summer_profiles"
+MIGRATION_REMOVE_PRESETS = "remove_presets"
 
 
 def allowed_profiles(planning: dict, profiles: dict[str, dict]) -> list[str]:

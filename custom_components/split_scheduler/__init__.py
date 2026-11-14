@@ -21,6 +21,7 @@ from .const import (
     CONF_POS,
     CONF_PROFILES,
     DOMAIN,
+    MIGRATION_REMOVE_PRESETS,
     MIGRATION_SUMMER_PROFILES,
     PLATFORMS,
     SUMMER_PROFILES,
@@ -54,6 +55,7 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
 async def async_setup_entry(hass: HomeAssistant, entry: SplitSchedulerConfigEntry) -> bool:
     """Met en place l'intégration."""
     _add_summer_profiles(hass, entry)
+    _remove_presets(hass, entry)
     scheduler = SplitScheduler(hass, entry)
     await scheduler.async_load()
     entry.runtime_data = scheduler
@@ -111,4 +113,18 @@ def _add_summer_profiles(hass: HomeAssistant, entry: ConfigEntry) -> None:
         profiles[pid] = profile
     options[CONF_PROFILES] = profiles
     options[CONF_MIGRATIONS] = [*migrations, MIGRATION_SUMMER_PROFILES]
+    hass.config_entries.async_update_entry(entry, options=options)
+
+
+def _remove_presets(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Retire une fois le préréglage (Normal / ECONO / Powerful) des profils existants."""
+    migrations = list(entry.options.get(CONF_MIGRATIONS, []))
+    if MIGRATION_REMOVE_PRESETS in migrations:
+        return
+    options = {**entry.options}
+    options[CONF_PROFILES] = {
+        pid: {k: v for k, v in p.items() if k != "preset_mode"}
+        for pid, p in options.get(CONF_PROFILES, {}).items()
+    }
+    options[CONF_MIGRATIONS] = [*migrations, MIGRATION_REMOVE_PRESETS]
     hass.config_entries.async_update_entry(entry, options=options)

@@ -91,13 +91,13 @@
           "swing_mode": "Oscillation (verticale)",
           "swing_horizontal_mode": "Oscillation horizontale",
           "outdoor_max_delta": "Écart maximal avec l'extérieur",
-          "preset_mode": "Préréglage du split"
+          "quiet_outdoor": "Unité extérieure silencieuse 🤫"
         },
         "data_description": {
           "fan_mode": "Valeurs proposées par vos splits ; vous pouvez aussi en saisir une.",
           "temperature": "Ignorée en mode Arrêt et Ventilation seule.",
           "outdoor_max_delta": "Climatisation : la consigne ne descend jamais à plus de cet écart sous la température extérieure (moyenne sur 1 h) ; par exemple 26 °C et 10 °C d'écart donnent 29 °C quand il fait 39 °C dehors. Chauffage : la consigne ne monte jamais à plus de cet écart au-dessus. Vide : pas d'adaptation.",
-          "preset_mode": "Valeurs proposées par vos splits. ECONO limite la consommation (et la puissance) ; Powerful pousse l'appareil au maximum. Les deux s'excluent ; Normal les coupe. Un split qui ne gère pas la valeur l'ignore. Vide : préréglage inchangé."
+          "quiet_outdoor": "Moins de bruit dehors, un peu moins de puissance. Réglé par l'interrupteur « Quiet outdoor » de Faikout (option « HA switches ») ; un split sans cet interrupteur l'ignore. Vaut pour toute l'unité extérieure. Vide : ne pas modifier."
         }
       },
       "profile_edit_pick": {
@@ -117,13 +117,13 @@
           "swing_mode": "Oscillation (verticale)",
           "swing_horizontal_mode": "Oscillation horizontale",
           "outdoor_max_delta": "Écart maximal avec l'extérieur",
-          "preset_mode": "Préréglage du split"
+          "quiet_outdoor": "Unité extérieure silencieuse 🤫"
         },
         "data_description": {
           "fan_mode": "Valeurs proposées par vos splits ; vous pouvez aussi en saisir une.",
           "temperature": "Ignorée en mode Arrêt et Ventilation seule.",
           "outdoor_max_delta": "Climatisation : la consigne ne descend jamais à plus de cet écart sous la température extérieure (moyenne sur 1 h) ; par exemple 26 °C et 10 °C d'écart donnent 29 °C quand il fait 39 °C dehors. Chauffage : la consigne ne monte jamais à plus de cet écart au-dessus. Vide : pas d'adaptation.",
-          "preset_mode": "Valeurs proposées par vos splits. ECONO limite la consommation (et la puissance) ; Powerful pousse l'appareil au maximum. Les deux s'excluent ; Normal les coupe. Un split qui ne gère pas la valeur l'ignore. Vide : préréglage inchangé."
+          "quiet_outdoor": "Moins de bruit dehors, un peu moins de puissance. Réglé par l'interrupteur « Quiet outdoor » de Faikout (option « HA switches ») ; un split sans cet interrupteur l'ignore. Vaut pour toute l'unité extérieure. Vide : ne pas modifier."
         }
       },
       "profile_delete": {
@@ -317,12 +317,10 @@
         "sun": "Dimanche"
       }
     },
-    "preset_mode": {
+    "quiet_state": {
       "options": {
-        "home": "Normal",
-        "none": "Normal",
-        "eco": "ECONO",
-        "boost": "Powerful"
+        "on": "Activée",
+        "off": "Désactivée"
       }
     }
   },

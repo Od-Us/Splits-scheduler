@@ -25,7 +25,7 @@ from homeassistant.util import dt as dt_util
 
 from .const import (
     ATTR_FAN_MODE,
-    ATTR_PRESET_MODE,
+    ATTR_QUIET,
     ATTR_HVAC_MODE,
     ATTR_SWING_HORIZONTAL_MODE,
     ATTR_SWING_MODE,
@@ -58,6 +58,7 @@ from .outdoor import (
     adapt_target,
     round_half,
 )
+from .features import quiet_switch
 from .planning import Program, current_occurrence, next_occurrence
 
 _LOGGER = logging.getLogger(__name__)
@@ -74,7 +75,6 @@ _MODE_SETTINGS = (
         "swing_horizontal_modes",
         "set_swing_horizontal_mode",
     ),
-    (ATTR_PRESET_MODE, "preset_mode", "preset_modes", "set_preset_mode"),
 )
 
 
@@ -162,6 +162,8 @@ class SplitScheduler:
         self._pending: dict[str, tuple[str, str]] = {}  # entity_id -> (groupe, profil)
         self._listeners: list[Callable[[], None]] = []
         self.outdoor_entity: str | None = options.get(CONF_SETTINGS, {}).get(CONF_OUTDOOR)
+        # Interrupteur « unité extérieure silencieuse » de chaque split (Faikout)
+        self.quiet_switches: dict[str, str] = {}
         self.outdoor = OutdoorAverage()
         self._unsubs: list[CALLBACK_TYPE] = []
 
@@ -214,6 +216,9 @@ class SplitScheduler:
             self._unsubs.append(
                 async_track_state_change_event(self.hass, climates, self._on_climate_change)
             )
+        self.quiet_switches = {
+            eid: switch for eid in climates if (switch := quiet_switch(self.hass, eid))
+        }
         compressors = {
             g[CONF_COMPRESSOR]: gid for gid, g in self.groups.items() if g.get(CONF_COMPRESSOR)
         }
@@ -824,6 +829,8 @@ class SplitScheduler:
                 hvac_mode = None
             else:
                 await call("set_hvac_mode", hvac_mode=hvac_mode)
+        if (quiet := profile.get(ATTR_QUIET)) is not None:
+            await self._async_send_quiet(entity_id, quiet)
         mode = hvac_mode or current.state
         if mode == "off":
             return
@@ -856,6 +863,50 @@ class SplitScheduler:
                 continue
             await call(service, **{attr: value})
 
+    async def _async_send_quiet(self, entity_id: str, on: bool) -> bool:
+        """Unité extérieure silencieuse d'un split ; False si l'interrupteur ne répond pas."""
+        switch = self.quiet_switches.get(entity_id)
+        current = self.hass.states.get(switch) if switch else None
+        if current is None or current.state in _NOT_READY:
+            _LOGGER.warning(
+                "%s : unité extérieure silencieuse indisponible (interrupteur Faikout %s ; "
+                "vérifier l'option « HA switches » de Faikout)", entity_id, switch or "absent",
+            )
+            return False
+        if current.state != ("on" if on else "off"):
+            try:
+                await self.hass.services.async_call(
+                    "switch", "turn_on" if on else "turn_off", {ATTR_ENTITY_ID: switch}, blocking=True
+                )
+            except HomeAssistantError as err:
+                _LOGGER.warning("%s : échec : %s", switch, err)
+                return False
+        return True
+
+    async def async_set_quiet(self, gid: str, on: bool) -> list[str]:
+        """Depuis la carte : silence de l'unité extérieure pour les splits du groupe.
+
+        Ce n'est pas une dérogation : la programmation continue, et le profil suivant
+        qui précise ce réglage le réapplique.
+        """
+        failed = []
+        for entity_id in self.groups[gid][CONF_CLIMATES]:
+            if entity_id in self.quiet_switches and not await self._async_send_quiet(entity_id, on):
+                failed.append(entity_id)
+        return failed
+
+    def quiet_info(self, gid: str) -> dict[str, dict[str, str | None]]:
+        """Diagnostic : interrupteur « quiet » de chaque split et son état."""
+        result = {}
+        for entity_id in self.groups[gid][CONF_CLIMATES]:
+            switch = self.quiet_switches.get(entity_id)
+            st = self.hass.states.get(switch) if switch else None
+            result[entity_id] = {
+                "interrupteur": switch,
+                "etat": st.state if st else ("absent" if switch else None),
+            }
+        return result
+
     # ------------------------------------------------------------------ suivi des splits
 
     @callback
@@ -884,14 +935,33 @@ class SplitScheduler:
             if (
                 entity_id not in group[CONF_CLIMATES]
                 or not state.enabled
-                or state.override
-                or entity_id in state.split_overrides
-                or state.active_profile_id is None
                 or (state.applied_at is not None and now - state.applied_at < GRACE_PERIOD)
             ):
                 continue
+            single = len(group[CONF_CLIMATES]) == 1
+            if state.override:
+                if single and state.hand_set:
+                    # Groupe d'un seul split en dérogation : la consigne du groupe suit le split
+                    state.manual_settings = _manual_from(new)
+                    self._changed()
+                continue
+            if entity_id in state.split_overrides or state.active_profile_id is None:
+                continue
             profile = self._settings_for(gid, state.active_profile_id)
-            if _deviates(new, profile):
+            if not _deviates(new, profile):
+                continue
+            if single:
+                _LOGGER.info(
+                    "Groupe « %s » : réglage manuel détecté sur %s (seul split du groupe), "
+                    "groupe en dérogation jusqu'au prochain créneau",
+                    group["name"],
+                    entity_id,
+                )
+                state.override_since = now
+                state.override = True
+                state.hand_set = True
+                state.manual_settings = _manual_from(new)
+            else:
                 _LOGGER.info(
                     "Groupe « %s » : réglage manuel détecté sur %s, ce split seul est en "
                     "dérogation jusqu'au prochain créneau",
@@ -899,7 +969,15 @@ class SplitScheduler:
                     entity_id,
                 )
                 state.split_overrides[entity_id] = SplitOverride(since=now)
-                self._changed()
+            self._changed()
+
+
+def _manual_from(split: State) -> dict[str, Any]:
+    """Consigne et mode d'un split, comme réglage manuel du groupe."""
+    settings: dict[str, Any] = {ATTR_HVAC_MODE: split.state}
+    if (temperature := split.attributes.get("temperature")) is not None:
+        settings[ATTR_TEMPERATURE] = float(temperature)
+    return settings
 
 
 def _deviates(state: State, profile: dict) -> bool:
@@ -921,8 +999,6 @@ def _deviates(state: State, profile: dict) -> bool:
         return True
     for setting, attr, choices, _ in _MODE_SETTINGS:
         value = profile.get(setting)
-        if setting == ATTR_PRESET_MODE and (value == "boost" or attrs.get(attr) == "boost"):
-            continue  # Powerful s'arrête de lui-même au bout d'un moment : pas une dérogation
         if value is not None and value in attrs.get(choices, []) and attrs.get(attr) != value:
             return True
     return False

@@ -11,10 +11,10 @@ from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import entity_registry as er
 
+from .features import quiet_switch
 from .const import (
     ATTR_FAN_MODE,
     ATTR_HVAC_MODE,
-    ATTR_PRESET_MODE,
     ATTR_SWING_MODE,
     ATTR_TEMPERATURE,
     CONF_CLIMATES,
@@ -47,6 +47,7 @@ def async_register(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, ws_manual)
     websocket_api.async_register_command(hass, ws_override_shift)
     websocket_api.async_register_command(hass, ws_split_resume)
+    websocket_api.async_register_command(hass, ws_quiet)
 
 
 def _scheduler(hass: HomeAssistant) -> SplitScheduler | None:
@@ -91,6 +92,11 @@ def ws_info(
                         for eid in group[CONF_CLIMATES]
                     },
                     "compressor": group.get(CONF_COMPRESSOR),
+                    # interrupteur « unité extérieure silencieuse » de chaque split (ou None)
+                    "quiet": {
+                        eid: scheduler.quiet_switches.get(eid) or quiet_switch(hass, eid)
+                        for eid in group[CONF_CLIMATES]
+                    },
                     "entities": {
                         key: entity(domain, f"{entry_id}_{gid}_{suffix}")
                         for key, (domain, suffix) in _GROUP_ENTITIES.items()
@@ -128,7 +134,6 @@ def ws_info(
         vol.Optional(ATTR_HVAC_MODE): str,
         vol.Optional(ATTR_FAN_MODE): str,
         vol.Optional(ATTR_SWING_MODE): str,
-        vol.Optional(ATTR_PRESET_MODE): str,
     }
 )
 @websocket_api.async_response
@@ -142,7 +147,7 @@ async def ws_manual(
         return
     settings = {
         key: msg[key]
-        for key in (ATTR_HVAC_MODE, ATTR_TEMPERATURE, ATTR_FAN_MODE, ATTR_SWING_MODE, ATTR_PRESET_MODE)
+        for key in (ATTR_HVAC_MODE, ATTR_TEMPERATURE, ATTR_FAN_MODE, ATTR_SWING_MODE)
         if key in msg
     }
     if not settings:
@@ -197,3 +202,23 @@ async def ws_split_resume(
         return
     await scheduler.async_resume_split(msg["group_id"], msg["entity_id"])
     connection.send_result(msg["id"])
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): "split_scheduler/quiet",
+        vol.Required("group_id"): str,
+        vol.Required("on"): bool,
+    }
+)
+@websocket_api.async_response
+async def ws_quiet(
+    hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]
+) -> None:
+    """Unité extérieure silencieuse pour les splits du groupe (pas une dérogation)."""
+    scheduler = _scheduler(hass)
+    if scheduler is None or msg["group_id"] not in scheduler.groups:
+        connection.send_error(msg["id"], "not_found", "Groupe inconnu")
+        return
+    failed = await scheduler.async_set_quiet(msg["group_id"], msg["on"])
+    connection.send_result(msg["id"], {"non_appliques": failed})

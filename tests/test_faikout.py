@@ -31,7 +31,7 @@ FAIKOUT_S21 = {
     "supported_features": 441,
 }
 SERVICES = (
-    "set_hvac_mode", "set_temperature", "set_fan_mode", "set_swing_mode", "set_preset_mode",
+    "set_hvac_mode", "set_temperature", "set_fan_mode", "set_swing_mode", "set_preset_mode",  # préréglage : jamais
 )
 
 

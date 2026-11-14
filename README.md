@@ -67,12 +67,17 @@ Plannings fournis : *Normal*, *Vacances*, *Absence prolongée* (vides au départ
 Sur la carte de l'intégration, cliquer sur **Configurer**. Un menu propose :
 
 - **Groupes de splits** : nom et thermostats du groupe.
-- **Préréglage du split** (dans chaque profil) : *Ne pas modifier*, *Normal*,
-  *ECONO* ou *Powerful*, selon ce qu'annoncent les splits (préréglages `home`,
-  `eco`, `boost` de Faikout). ECONO limite la consommation (et la puissance),
-  Powerful pousse l'appareil au maximum ; les deux s'excluent et *Normal* les
-  coupe. Un split sans la valeur l'ignore. Powerful s'arrêtant de lui-même au
-  bout d'un moment, son arrêt n'est pas pris pour une dérogation.
+- **Unité extérieure silencieuse** 🤫 (dans chaque profil) : *Activée*,
+  *Désactivée* ou vide (ne pas modifier). Réglée par l'interrupteur « Quiet
+  outdoor » que Faikout publie dans Home Assistant (option **« HA switches »**
+  du module) ; proposée seulement si au moins un split a cet interrupteur, et
+  ignorée par un split qui ne l'a pas (message dans le journal). Elle agit sur
+  l'unité extérieure : si plusieurs splits la partagent, elle vaut pour tous.
+  **Ce n'est jamais une dérogation** : la changer à la télécommande ou depuis
+  la carte ne suspend pas la programmation ; le profil suivant qui précise ce
+  réglage le réapplique. Attribut `silence_exterieur` du sélecteur de profil :
+  interrupteur trouvé et état, pour chaque split. Le préréglage du split
+  (Normal / ECONO / Powerful) n'est pas géré par l'intégration.
 - **Profils de fonctionnement** : un champ laissé vide n'est *pas modifié* sur
   les splits. Par exemple, un profil qui ne fixe que la consigne garde le mode
   en cours. Les vitesses de ventilateur et les oscillations proposées sont
@@ -148,8 +153,9 @@ création des entités ; ils se retrouvent dans la page de l'appareil.
   `derogation_depuis` sur le sélecteur de profil.
 - **Réglage sur un split** (télécommande, fenêtre de son thermostat) : si un
   split s'écarte du profil appliqué (mode, consigne à plus de 0,3 °C près,
-  ventilateur, oscillation, préréglage) plus de 2 minutes après l'envoi,
-  **ce split seul** passe en dérogation ; les autres splits du groupe
+  ventilateur, oscillation) plus de 2 minutes après l'envoi, **ce split
+  seul** passe en dérogation (pour un groupe d'un seul split, c'est **tout le
+  groupe**, dont la consigne suit alors celle du split) ; les autres splits du groupe
   continuent de suivre les créneaux et l'adaptation à l'extérieur. Il reprend
   au prochain créneau, ou à l'heure choisie avec ses boutons −30min / +30min,
   ou avec son bouton de reprise (bandeau ou liste des splits). Attribut
@@ -238,8 +244,11 @@ Programmation des splits*. Tout se règle dans son éditeur visuel :
   - **capteurs supplémentaires** affichés sous l'état (humidité, CO₂…), avec
     un **libellé** au choix pour chacun (vide = nom du capteur) ;
   - **partie « Modifier »** : choix du planning du groupe, choix d'un profil,
-    réglages manuels proposés (consigne, mode, ventilateur, préréglage —
-    listes déroulantes —, oscillation) ;
+    réglages manuels proposés (consigne, mode, ventilateur — listes
+    déroulantes —, oscillation, **unité extérieure silencieuse**). Ce dernier
+    est un interrupteur, affiché seulement si un split du groupe a
+    l'interrupteur Faikout ; un appui ne vaut pas dérogation, affiche aussitôt
+    le nouvel état puis celui des splits, et signale un split qui ne répond pas ;
   - **frise du compresseur** (facultative) : sous la frise des profils, une
     bande fine montre les périodes de marche du compresseur aujourd'hui et un
     trait à chaque démarrage, avec leur nombre en légende ;

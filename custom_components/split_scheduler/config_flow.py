@@ -44,8 +44,7 @@ from .const import (
     CONF_OUTDOOR,
     CONF_SETTINGS,
     ATTR_OUTDOOR_DELTA,
-    ATTR_PRESET_MODE,
-    PRESETS,
+    ATTR_QUIET,
     CONF_GROUPS,
     CONF_PLANNINGS,
     CONF_PROFILES,
@@ -62,6 +61,7 @@ from .const import (
     with_positions,
     lang_of,
 )
+from .features import quiet_switch
 from .planning import ProgramError, format_day, normalize, parse_day, profiles_used
 from .scheduler import detect_outdoor_sensor
 
@@ -327,6 +327,8 @@ class SplitSchedulerOptionsFlow(OptionsFlow):
                         profile[setting] = (
                             float(value) if setting == ATTR_TEMPERATURE else str(value)
                         )
+                if user_input.get(ATTR_QUIET) in ("on", "off"):
+                    profile[ATTR_QUIET] = user_input[ATTR_QUIET] == "on"
                 if user_input.get(ATTR_OUTDOOR_DELTA) not in (None, ""):
                     profile[ATTR_OUTDOOR_DELTA] = float(user_input[ATTR_OUTDOOR_DELTA])
                 new_id = profile_id or _new_id()
@@ -361,16 +363,15 @@ class SplitSchedulerOptionsFlow(OptionsFlow):
                 min=1, max=30, step=0.5, mode=NumberSelectorMode.BOX, unit_of_measurement="°C"
             )
         )
-        presets = [p for p in PRESETS if p in self._known_modes("preset_modes")]
-        if values.get(ATTR_PRESET_MODE) and values[ATTR_PRESET_MODE] not in presets:
-            presets.append(values[ATTR_PRESET_MODE])
-        if "home" in presets and "none" in presets:
-            presets.remove("none")  # « Normal » : home chez Faikout
-        fields[vol.Optional(ATTR_PRESET_MODE)] = SelectSelector(
-            SelectSelectorConfig(
-                options=presets, translation_key="preset_mode", mode=SelectSelectorMode.DROPDOWN
+        # Unité extérieure silencieuse : si au moins un split a l'interrupteur Faikout
+        if values.get(ATTR_QUIET) is not None or any(
+            quiet_switch(self.hass, eid) for g in self.opts[CONF_GROUPS].values() for eid in g[CONF_CLIMATES]
+        ):
+            fields[vol.Optional(ATTR_QUIET)] = SelectSelector(
+                SelectSelectorConfig(
+                    options=["on", "off"], translation_key="quiet_state", mode=SelectSelectorMode.DROPDOWN
+                )
             )
-        )
         for setting, list_attr in _MODE_LISTS.items():
             fields[vol.Optional(setting)] = SelectSelector(
                 SelectSelectorConfig(
@@ -379,7 +380,10 @@ class SplitSchedulerOptionsFlow(OptionsFlow):
                     mode=SelectSelectorMode.DROPDOWN,
                 )
             )
-        schema = self.add_suggested_values_to_schema(vol.Schema(fields), values)
+        shown = dict(values)
+        if isinstance(shown.get(ATTR_QUIET), bool):
+            shown[ATTR_QUIET] = "on" if shown[ATTR_QUIET] else "off"
+        schema = self.add_suggested_values_to_schema(vol.Schema(fields), shown)
         return self.async_show_form(
             step_id=step_id,
             data_schema=schema,

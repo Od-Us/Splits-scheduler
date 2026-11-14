@@ -22,7 +22,7 @@
  *       chart: [ambient, setpoint, outdoor]  # courbes du jour (au choix)
  */
 
-const CARD_VERSION = "1.10.2";
+const CARD_VERSION = "1.12.0";
 const ICON_URL = new URL("icon.png", import.meta.url).href;
 
 const GROUP_DEFAULTS = {
@@ -166,9 +166,12 @@ const I18N = {
     later: "Reprise 30 minutes plus tard",
     skipped: "{t} {p} ignoré · ensuite {n}",
     then: "Ensuite {n}",
-    preset: "Préréglage",
-    m_preset_mode: "Préréglage (Normal, ECONO, Powerful)",
-    presets: { home: "Normal", none: "Normal", eco: "ECONO", boost: "Powerful" },
+    m_quiet_outdoor: "Unité extérieure silencieuse (si les splits l'ont)",
+    quiet: "Ext. silencieux",
+    quiet_long: "Unité extérieure silencieuse",
+    quiet_unavailable: "indisponible",
+    quiet_wait: "en attente du split…",
+    quiet_failed: "Pas de réponse de {s}. Vérifiez l'option « HA switches » du module Faikout.",
     profiles_band: "Profils",
     compressor_band: "Compresseur",
     starts_period: "{n} démarrage sur la période · {r} démarrage/h en moyenne|{n} démarrages sur la période · {r} démarrage/h en moyenne",
@@ -300,9 +303,12 @@ const I18N = {
     later: "Resume 30 minutes later",
     skipped: "{t} {p} skipped · then {n}",
     then: "Then {n}",
-    preset: "Preset",
-    m_preset_mode: "Preset (Normal, ECONO, Powerful)",
-    presets: { home: "Normal", none: "Normal", eco: "ECONO", boost: "Powerful" },
+    m_quiet_outdoor: "Quiet outdoor unit (if the splits have it)",
+    quiet: "Quiet outdoor",
+    quiet_long: "Quiet outdoor unit",
+    quiet_unavailable: "unavailable",
+    quiet_wait: "waiting for the split…",
+    quiet_failed: "No answer from {s}. Check the “HA switches” option of the Faikout module.",
     profiles_band: "Profiles",
     compressor_band: "Compressor",
     starts_period: "{n} start in the period · {r} starts/h on average|{n} starts in the period · {r} starts/h on average",
@@ -536,13 +542,14 @@ class SplitSchedulerCard extends HTMLElement {
     const ids = [this._info?.global_planning];
     for (const g of this._groupConfigs()) {
       if (!g.info) continue;
-      ids.push(...Object.values(g.info.entities), ...g.info.climates, ...Object.values(thermometers(g, this._hass.states)), ...(g.sensors || []));
+      ids.push(...Object.values(g.info.entities), ...g.info.climates, ...Object.values(thermometers(g, this._hass.states)), ...(g.sensors || []),
+        ...Object.values(g.info.quiet || {}).filter(Boolean));
     }
     const parts = ids.filter(Boolean).map((id) => {
       const s = this._hass.states[id];
       return s ? `${id}:${s.last_updated}` : id;
     });
-    return [JSON.stringify(this._config), this._error, this._confirm ? "confirm" : "", JSON.stringify(this._pending), [...this._expanded].join(), [...this._splitsOpen].join(), lang(this._hass), this._historyStamp, ...parts].join("|");
+    return [JSON.stringify(this._config), this._error, this._confirm ? "confirm" : "", JSON.stringify(this._quietPending || {}), JSON.stringify(this._quietMsg || {}), JSON.stringify(this._pending), [...this._expanded].join(), [...this._splitsOpen].join(), lang(this._hass), this._historyStamp, ...parts].join("|");
   }
 
   _render() {
@@ -658,7 +665,7 @@ class SplitSchedulerCard extends HTMLElement {
       deviations.push(this._t("diff_targets").replace("{a}", this._fmt(Math.min(...temps))).replace("{b}", this._fmt(Math.max(...temps))));
     }
     let statusText = I18N[lang(this._hass)].status[status] || status;
-    if (status === "override" && !groupOverride && splitOvr.length) {
+    if (status === "override" && !groupOverride && splitOvr.length && g.info.climates.length > 1) {
       statusText = splitOvr.length === 1
         ? `${statusText} · ${this._splitName(splitOvr[0].entity_id)}`
         : this._t("ovr_n_splits").replace("{n}", splitOvr.length);
@@ -747,7 +754,7 @@ class SplitSchedulerCard extends HTMLElement {
           <button type="button" class="gname" aria-expanded="${this._splitsOpen.has(g.group)}" data-action="splits" data-group="${esc(g.group)}">
             <h2>${esc(g.info.name)}</h2><span class="muted small">${esc(plural(this._t("n_splits"), g.info.climates.length))}</span>${svg(this._splitsOpen.has(g.group) ? ICONS.up : ICONS.down, 16)}
           </button>
-          <span class="status" style="background:${mix(statusColor, 18)};color:${mix(statusColor, 70, "var(--primary-text-color)")}">${svg(statusIcon, 14)}<span class="ell">${esc(statusText)}</span></span>
+          <span class="status" title="${esc(statusText)}" style="background:${mix(statusColor, 18)};color:${mix(statusColor, 70, "var(--primary-text-color)")}">${svg(statusIcon, 14)}<span class="ell">${esc(statusText)}</span></span>
         </div>
         ${this._splitsOpen.has(g.group) ? this._renderSplits(g, splitOvr) : ""}
         <div class="row between end">
@@ -757,7 +764,7 @@ class SplitSchedulerCard extends HTMLElement {
             ${deviations.map((d) => `<span class="small devi">${esc(d)}</span>`).join("")}</div>
           <div class="col right">
             ${profile ? `<span class="pchip" style="background:${mix(color, 20)};color:${mix(color, 55, "var(--primary-text-color)")}"><i style="background:${color}"></i>${esc(profile.name)}</span>` : ""}
-            <span class="muted small">${esc([hvac[mode] || "", ["eco", "boost"].includes(attrs.preset_mode) ? I18N[lang(this._hass)].presets[attrs.preset_mode] : ""].filter(Boolean).join(" · "))}</span>
+            <span class="muted small">${esc([hvac[mode] || "", this._quietState(g)?.on ? `🤫 ${this._t("quiet")}` : ""].filter(Boolean).join(" · "))}</span>
           </div>
         </div>
         ${ambient || extra || outdoorChip ? `<div class="chips">${ambient}${outdoorChip}${extra}</div>` : ""}
@@ -810,7 +817,6 @@ class SplitSchedulerCard extends HTMLElement {
       if (v === null || v === undefined) return "–";
       if (r === "temperature") return `${this._fmt(v)} °C`;
       if (r === "hvac_mode") return L.hvac[v] || v;
-      if (r === "preset_mode") return L.presets[v] || v;
       return `${this._t({ fan_mode: "fan", swing_mode: "swing" }[r] || r).toLowerCase()} ${v}`;
     };
     return (o.ecarts || []).map((x) => this._t("instead").replace("{v}", fmt(x.reglage, x.valeur)).replace("{p}", fmt(x.reglage, x.prevu))).join(", ");
@@ -1126,15 +1132,13 @@ class SplitSchedulerCard extends HTMLElement {
       if (manual.includes("fan_mode") && (a.fan_modes || []).length) {
         rows.push(this._selectRow(`fan-${g.group}`, this._t("fan"), "fan_mode", g.group, a.fan_modes, a.fan_mode));
       }
-      const offered = a.preset_modes || [];
-      // « Normal » : home chez Faikout (none seulement s'il n'y a pas home)
-      const presets = ["home", "none", "eco", "boost"].filter((p) => offered.includes(p) && !(p === "none" && offered.includes("home")));
-      if (manual.includes("preset_mode") && presets.length > 1) {
-        const labels = I18N[lang(this._hass)].presets;
-        // Normal = home (ou none) : l'état courant « none » s'affiche aussi comme Normal
-        const current = presets.includes(a.preset_mode) ? a.preset_mode : (["home", "none"].includes(a.preset_mode) ? presets.find((p) => p === "home" || p === "none") : a.preset_mode);
-        const opts = presets.includes(current) || !current ? presets : [current, ...presets];
-        rows.push(this._selectRow(`preset-${g.group}`, this._t("preset"), "preset_mode", g.group, opts, current, (p) => labels[p] || p));
+      const quiet = manual.includes("quiet_outdoor") ? this._quietState(g) : null;
+      if (quiet) {
+        const note = !quiet.available ? this._t("quiet_unavailable") : quiet.pending ? this._t("quiet_wait") : "";
+        const msg = this._quietMsg?.[g.group];
+        rows.push(`<div class="col gap4"><div class="row between"><span>🤫 ${esc(this._t("quiet_long"))}${note ? ` <span class="muted small">· ${esc(note)}</span>` : ""}</span>
+          <button type="button" role="switch" class="switch ${quiet.on ? "on" : ""} ${quiet.pending ? "pending" : ""}" aria-checked="${quiet.on}" aria-label="${esc(this._t("quiet_long"))}" data-action="quiet" data-group="${gid}" ${quiet.available ? "" : "disabled"}><i></i></button></div>
+          ${msg ? `<span class="small err" role="alert">${esc(msg)}</span>` : ""}</div>`);
       }
       if (manual.includes("swing_mode") && (a.swing_modes || []).length) {
         rows.push(`<div class="row between"><span>${esc(this._t("swing"))}</span>${this._segmented(a.swing_modes, a.swing_mode, "swing_mode", g.group)}</div>`);
@@ -1245,9 +1249,11 @@ class SplitSchedulerCard extends HTMLElement {
       case "swing_mode":
         this._manual(group, { swing_mode: value });
         break;
-      case "preset_mode":
-        this._manual(group, { preset_mode: value });
+      case "quiet": {
+        const q = this._quietState(g);
+        if (q?.available) this._quietPress(g, q);
         break;
+      }
       case "shift":
         this._call(this._hass.callWS({ type: "split_scheduler/override_shift", group_id: group, minutes: Number(value), ...(el.dataset.entity ? { entity_id: el.dataset.entity } : {}) }));
         break;
@@ -1281,6 +1287,48 @@ class SplitSchedulerCard extends HTMLElement {
         </div>
       </div>
     </div>`;
+  }
+
+  /**
+   * Unité extérieure silencieuse d'un groupe : null si aucun split n'a l'interrupteur Faikout.
+   * Activée = activée sur tous les splits qui l'ont. Pendant un appui, état demandé.
+   */
+  _quietState(g) {
+    const switches = Object.values(g.info.quiet || {}).filter(Boolean);
+    if (!switches.length) return null;
+    const states = switches.map((sw) => this._state(sw)?.state).filter((v) => v === "on" || v === "off");
+    const item = { switches, available: states.length > 0, on: states.length > 0 && states.every((v) => v === "on") };
+    const p = this._quietPending?.[g.group];
+    if (p) {
+      if (item.on === p.want) delete this._quietPending[g.group];
+      else { item.on = p.want; item.pending = true; }
+    }
+    return item;
+  }
+
+  /** Appui : nouvel état affiché aussitôt ; message si le split ne répond pas. Pas une dérogation. */
+  async _quietPress(g, q) {
+    const want = !q.on;
+    this._quietPending = this._quietPending || {};
+    this._quietMsg = this._quietMsg || {};
+    this._quietPending[g.group] = { want };
+    delete this._quietMsg[g.group];
+    this._signature = "";
+    this._render();
+    const fail = () => {
+      delete this._quietPending[g.group];
+      this._quietMsg[g.group] = this._t("quiet_failed").replace("{s}", q.switches.join(", "));
+      this._signature = "";
+      this._render();
+    };
+    try {
+      const res = await this._hass.callWS({ type: "split_scheduler/quiet", group_id: g.group, on: want });
+      if (res?.non_appliques?.length) { fail(); return; }
+    } catch (err) {
+      fail();
+      return;
+    }
+    setTimeout(() => { if (this._quietPending?.[g.group]) fail(); }, 20000);
   }
 
   _onChange(ev) {
@@ -1881,6 +1929,12 @@ const CARD_CSS = `
   .splitrow .split { flex: 1; min-width: 0; border-top: 0; background: none; }
   .splitrow.held { background: ${mix("var(--warning-color, #ffa000)", 9, "var(--card-background-color, #fff)")}; box-shadow: inset 3px 0 0 var(--warning-color, #ffa000); }
   .splitrow .resume { width: 40px; min-height: 40px; padding: 0; margin-right: 10px; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .bigrow { white-space: nowrap; }
+  .status { min-width: 0; overflow: hidden; flex-shrink: 1; }
+  .gname { flex-shrink: 0; white-space: nowrap; }
+  .switch.pending { opacity: .65; }
+  .switch:disabled { opacity: .45; cursor: default; }
+  .gap4 { gap: 4px; }
   .chip.held { background: ${mix("var(--warning-color, #ffa000)", 16)}; }
   .devi { color: ${mix("var(--warning-color, #ffa000)", 75, "var(--primary-text-color)")}; font-weight: 500; }
   .status .ell { overflow: hidden; text-overflow: ellipsis; }
@@ -2036,7 +2090,7 @@ class SplitSchedulerCardEditor extends HTMLElement {
       root.append(p);
     }
     const names = Object.fromEntries((this._info?.groups || []).map((g) => [g.id, g.name]));
-    const manualOptions = ["temperature", "fan_mode", "swing_mode", "preset_mode", "hvac_mode"].map((v) => ({ value: v, label: this._t(`m_${v}`) }));
+    const manualOptions = ["temperature", "fan_mode", "swing_mode", "hvac_mode", "quiet_outdoor"].map((v) => ({ value: v, label: this._t(`m_${v}`) }));
     const compressorOptions = ["avg_24h", "avg_profile"].map((v) => ({ value: v, label: this._t(`o_${v}`) }));
     const chartOptions = ["ambient", "setpoint", "outdoor"].map((v) => ({ value: v, label: this._t(`ch_${v}`) }));
     const infoById = Object.fromEntries((this._info?.groups || []).map((g) => [g.id, g]));
