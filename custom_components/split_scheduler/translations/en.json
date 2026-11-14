@@ -258,10 +258,14 @@
         "title": "General settings",
         "description": "The outdoor temperature is used by profiles with a **maximum gap to outdoor**, for all groups. It is averaged over 60 minutes; the adapted target is sent at most every 30 minutes, only if it changes by at least 0.5 °C, and never when a profile change is due within 30 minutes. Without a valid value for an hour, the profile target applies.",
         "data": {
-          "outdoor_sensor": "Outdoor temperature sensor"
+          "outdoor_sensor": "Outdoor temperature sensor",
+          "send_normal_preset": "Send the Normal preset with every command",
+          "always_quiet": "Send “quiet outdoor unit” on with every command"
         },
         "data_description": {
-          "outdoor_sensor": "Empty: Faikout's “Outside” sensor (outdoor unit probe), detected automatically. It can be skewed while the unit runs, especially when cooling: a shaded sensor or weather station is more reliable."
+          "outdoor_sensor": "Empty: Faikout's “Outside” sensor (outdoor unit probe), detected automatically. It can be skewed while the unit runs, especially when cooling: a shaded sensor or weather station is more reliable.",
+          "send_normal_preset": "For multi-split systems: every time a split is sent a command (profile, manual setting, adapted target), the Normal preset is sent again, which turns ECONO and Powerful off.",
+          "always_quiet": "For multi-split systems: every time a split is sent a command, quiet outdoor is sent on again (Faikout “Quiet outdoor” switch), even if it already shows on. It takes precedence over profiles."
         }
       },
       "program_copy_groups": {

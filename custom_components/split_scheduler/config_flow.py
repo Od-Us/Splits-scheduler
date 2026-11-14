@@ -41,7 +41,9 @@ from .const import (
     CONF_CLIMATES,
     CONF_ALLOWED,
     CONF_COMPRESSOR,
+    CONF_ALWAYS_QUIET,
     CONF_OUTDOOR,
+    CONF_SEND_NORMAL,
     CONF_SETTINGS,
     ATTR_OUTDOOR_DELTA,
     ATTR_QUIET,
@@ -155,14 +157,24 @@ class SplitSchedulerOptionsFlow(OptionsFlow):
                 settings[CONF_OUTDOOR] = user_input[CONF_OUTDOOR]
             else:
                 settings.pop(CONF_OUTDOOR, None)  # vide : détection automatique
+            for key in (CONF_SEND_NORMAL, CONF_ALWAYS_QUIET):
+                settings[key] = bool(user_input.get(key, False))
             return await self.async_step_init()
         climates = [eid for g in self.opts[CONF_GROUPS].values() for eid in g[CONF_CLIMATES]]
         suggested = settings.get(CONF_OUTDOOR) or detect_outdoor_sensor(self.hass, climates)
         schema = self.add_suggested_values_to_schema(
             vol.Schema(
-                {vol.Optional(CONF_OUTDOOR): EntitySelector(EntitySelectorConfig(domain="sensor"))}
+                {
+                    vol.Optional(CONF_OUTDOOR): EntitySelector(EntitySelectorConfig(domain="sensor")),
+                    vol.Optional(CONF_SEND_NORMAL, default=False): BooleanSelector(),
+                    vol.Optional(CONF_ALWAYS_QUIET, default=False): BooleanSelector(),
+                }
             ),
-            {CONF_OUTDOOR: suggested},
+            {
+                CONF_OUTDOOR: suggested,
+                CONF_SEND_NORMAL: settings.get(CONF_SEND_NORMAL, False),
+                CONF_ALWAYS_QUIET: settings.get(CONF_ALWAYS_QUIET, False),
+            },
         )
         return self.async_show_form(step_id="settings", data_schema=schema)
 

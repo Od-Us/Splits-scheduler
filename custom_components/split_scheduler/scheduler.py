@@ -32,7 +32,9 @@ from .const import (
     ATTR_TEMPERATURE,
     CONF_CLIMATES,
     CONF_COMPRESSOR,
+    CONF_ALWAYS_QUIET,
     CONF_OUTDOOR,
+    CONF_SEND_NORMAL,
     CONF_SETTINGS,
     ATTR_OUTDOOR_DELTA,
     CONF_GROUPS,
@@ -162,6 +164,9 @@ class SplitScheduler:
         self._pending: dict[str, tuple[str, str]] = {}  # entity_id -> (groupe, profil)
         self._listeners: list[Callable[[], None]] = []
         self.outdoor_entity: str | None = options.get(CONF_SETTINGS, {}).get(CONF_OUTDOOR)
+        # Multi-split : envoyés avec chaque commande (réglages généraux)
+        self.send_normal: bool = bool(options.get(CONF_SETTINGS, {}).get(CONF_SEND_NORMAL))
+        self.always_quiet: bool = bool(options.get(CONF_SETTINGS, {}).get(CONF_ALWAYS_QUIET))
         # Interrupteur « unité extérieure silencieuse » de chaque split (Faikout)
         self.quiet_switches: dict[str, str] = {}
         self.outdoor = OutdoorAverage()
@@ -822,6 +827,8 @@ class SplitScheduler:
                 "climate", service, {ATTR_ENTITY_ID: entity_id, **data}, blocking=True
             )
 
+        await self._async_send_always(entity_id, current)
+
         hvac_mode = profile.get(ATTR_HVAC_MODE)
         if hvac_mode is not None and hvac_mode != current.state:
             if hvac_mode not in attrs.get("hvac_modes", []):
@@ -829,7 +836,7 @@ class SplitScheduler:
                 hvac_mode = None
             else:
                 await call("set_hvac_mode", hvac_mode=hvac_mode)
-        if (quiet := profile.get(ATTR_QUIET)) is not None:
+        if (quiet := profile.get(ATTR_QUIET)) is not None and not self.always_quiet:
             await self._async_send_quiet(entity_id, quiet)
         mode = hvac_mode or current.state
         if mode == "off":
@@ -862,6 +869,38 @@ class SplitScheduler:
                 _LOGGER.warning("%s : valeur « %s » non gérée pour %s", entity_id, value, attr)
                 continue
             await call(service, **{attr: value})
+
+    async def _async_send_always(self, entity_id: str, current: State) -> None:
+        """Réglages généraux multi-split : préréglage Normal et/ou silence extérieur, renvoyés
+        à chaque commande, même si le split les indique déjà (sa réponse n'est pas fiable)."""
+        if self.send_normal:
+            presets = current.attributes.get("preset_modes") or []
+            normal = "home" if "home" in presets else "none" if "none" in presets else None
+            if normal is None:
+                _LOGGER.debug("%s : pas de préréglage Normal (home / none)", entity_id)
+            else:
+                try:
+                    await self.hass.services.async_call(
+                        "climate", "set_preset_mode",
+                        {ATTR_ENTITY_ID: entity_id, "preset_mode": normal}, blocking=True,
+                    )
+                except (HomeAssistantError, ValueError) as err:
+                    _LOGGER.warning("%s : échec du préréglage Normal : %s", entity_id, err)
+        if self.always_quiet:
+            switch = self.quiet_switches.get(entity_id)
+            state = self.hass.states.get(switch) if switch else None
+            if state is None or state.state in _NOT_READY:
+                _LOGGER.warning(
+                    "%s : unité extérieure silencieuse indisponible (interrupteur Faikout %s)",
+                    entity_id, switch or "absent",
+                )
+            else:
+                try:
+                    await self.hass.services.async_call(
+                        "switch", "turn_on", {ATTR_ENTITY_ID: switch}, blocking=True
+                    )
+                except HomeAssistantError as err:
+                    _LOGGER.warning("%s : échec : %s", switch, err)
 
     async def _async_send_quiet(self, entity_id: str, on: bool) -> bool:
         """Unité extérieure silencieuse d'un split ; False si l'interrupteur ne répond pas."""

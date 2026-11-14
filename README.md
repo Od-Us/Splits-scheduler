@@ -77,7 +77,16 @@ Sur la carte de l'intégration, cliquer sur **Configurer**. Un menu propose :
   la carte ne suspend pas la programmation ; le profil suivant qui précise ce
   réglage le réapplique. Attribut `silence_exterieur` du sélecteur de profil :
   interrupteur trouvé et état, pour chaque split. Le préréglage du split
-  (Normal / ECONO / Powerful) n'est pas géré par l'intégration.
+  (Normal / ECONO / Powerful) n'est pas géré par l'intégration, sauf option
+  ci-dessous.
+- **Réglages généraux, multi-split** (deux options cumulables, désactivées par
+  défaut) : *Envoyer le préréglage Normal à chaque commande* (coupe ECONO et
+  Powerful) et *Envoyer « unité extérieure silencieuse » activée à chaque
+  commande* (prime sur le réglage des profils). « Chaque commande » : tout envoi
+  à un split — application d'un profil, réglage manuel depuis la carte,
+  consigne adaptée à l'extérieur ; les deux sont renvoyés même si le split les
+  indique déjà. Un bouton de la carte qui coupe le silence reste possible,
+  mais la commande suivante le réactive.
 - **Profils de fonctionnement** : un champ laissé vide n'est *pas modifié* sur
   les splits. Par exemple, un profil qui ne fixe que la consigne garde le mode
   en cours. Les vitesses de ventilateur et les oscillations proposées sont

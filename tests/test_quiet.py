@@ -117,3 +117,38 @@ async def test_presets_removed_from_existing_profiles(hass: HomeAssistant, freez
     entry, _ = await _setup(hass, freezer, [one], {"preset_mode": "eco"}, {"migrations": ["summer_profiles"]})
     assert "preset_mode" not in entry.options["profiles"]["confort"]
     assert "remove_presets" in entry.options["migrations"]
+
+
+async def test_general_options_sent_with_every_command(hass: HomeAssistant, freezer):
+    one, q1 = _faikout_split(hass, "chambre_1")
+    two, _ = _faikout_split(hass, "chambre_2", quiet=False)
+    for eid in (one, two):
+        hass.states.async_set(eid, "heat", {**ATTRS, "preset_modes": ["none", "eco", "boost", "home"], "preset_mode": "eco"})
+    hass.states.async_set(q1, "on")   # déjà indiqué actif : renvoyé quand même
+    presets = async_mock_service(hass, "climate", "set_preset_mode")
+    entry, events = await _setup(
+        hass, freezer, [one, two], {"quiet_outdoor": False},
+        {"settings": {"send_normal_preset": True, "always_quiet": True}},
+    )
+    assert sorted(c.data["entity_id"] for c in presets) == [one, two]
+    assert {c.data["preset_mode"] for c in presets} == {"home"}
+    assert _switch_calls(events, "turn_on") == [q1]       # chambre 2 sans interrupteur
+    assert _switch_calls(events, "turn_off") == []        # le profil ne coupe pas le silence imposé
+    # Réglage manuel depuis la carte : renvoyés à nouveau
+    presets.clear()
+    await entry.runtime_data.async_manual_settings("chambres", {"temperature": 21})
+    assert len(presets) == 2 and len(_switch_calls(events, "turn_on")) == 2
+
+
+async def test_general_options_in_settings_form(hass: HomeAssistant):
+    hass.config.language = "fr"
+    result = await hass.config_entries.flow.async_init(DOMAIN, context={"source": config_entries.SOURCE_USER})
+    entry = (await hass.config_entries.flow.async_configure(result["flow_id"], {}))["result"]
+    flow = hass.config_entries.options
+    fid = (await flow.async_init(entry.entry_id))["flow_id"]
+    result = await flow.async_configure(fid, {"next_step_id": "settings"})
+    assert {"send_normal_preset", "always_quiet"} <= {str(k) for k in result["data_schema"].schema}
+    await flow.async_configure(fid, {"send_normal_preset": True, "always_quiet": False})
+    await flow.async_configure(fid, {"next_step_id": "save"})
+    assert entry.options["settings"]["send_normal_preset"] is True
+    assert entry.options["settings"]["always_quiet"] is False
