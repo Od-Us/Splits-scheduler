@@ -256,6 +256,11 @@ Programmation des splits*. Tout se règle dans son éditeur visuel :
     affichés seulement pour les groupes dont un split possède la fonction ;
     les fonctions actives apparaissent aussi en pastilles sous la consigne et
     en icônes dans la liste des splits ;
+    option **« boutons des fonctions Daikin »** pour les masquer. Un appui
+    affiche tout de suite le nouvel état (« en attente du split… ») ; sans
+    réponse du split, un message nomme l'interrupteur Faikout en cause. Les
+    interrupteurs trouvés et leur état sont visibles dans l'attribut
+    `fonctions_daikin` du sélecteur de profil du groupe ;
   - **frise du compresseur** (facultative) : sous la frise des profils, une
     bande fine montre les périodes de marche du compresseur aujourd'hui et un
     trait à chaque démarrage, avec leur nombre en légende ;

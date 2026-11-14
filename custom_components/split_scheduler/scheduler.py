@@ -748,7 +748,7 @@ class SplitScheduler:
         self.states[gid].split_overrides.clear()
         await self.async_refresh_group(gid, force=True)
 
-    async def async_manual_settings(self, gid: str, settings: dict[str, Any]) -> None:
+    async def async_manual_settings(self, gid: str, settings: dict[str, Any]) -> list[str]:
         """Réglage manuel (depuis la carte), envoyé à tous les splits du groupe.
 
         Il vaut dérogation jusqu'au prochain créneau, comme un choix de profil.
@@ -766,8 +766,16 @@ class SplitScheduler:
                 {k: v for k, v in settings.items() if k in (ATTR_TEMPERATURE, ATTR_HVAC_MODE)}
             )
         _LOGGER.info("Groupe « %s » : réglage manuel %s", self.groups[gid]["name"], settings)
+        failed: list[str] = []
+        only_features = all(key in FEATURES for key in settings)
         for entity_id in self.groups[gid][CONF_CLIMATES]:
             current = self.hass.states.get(entity_id)
+            if only_features:
+                # Fonctions Daikin seules : uniquement les splits qui les possèdent
+                wanted = {k: v for k, v in settings.items() if k in self.switches.get(entity_id, {})}
+                if wanted:
+                    failed += await self._async_send_features(entity_id, wanted)
+                continue
             if current is None or current.state in _NOT_READY:
                 continue
             try:
@@ -775,6 +783,7 @@ class SplitScheduler:
             except (HomeAssistantError, ValueError) as err:
                 _LOGGER.warning("Échec du réglage manuel de %s : %s", entity_id, err)
         self._changed()
+        return failed
 
     # ------------------------------------------------------------------ application aux splits
 
@@ -840,6 +849,7 @@ class SplitScheduler:
                 hvac_mode = None
             else:
                 await call("set_hvac_mode", hvac_mode=hvac_mode)
+        await self._async_send_features(entity_id, profile)
         mode = hvac_mode or current.state
         if mode == "off":
             return
@@ -872,22 +882,48 @@ class SplitScheduler:
                 continue
             await call(service, **{attr: value})
 
-        for key, wanted in profile.items():
+    async def _async_send_features(self, entity_id: str, settings: dict) -> list[str]:
+        """Règle les fonctions Daikin d'un split ; renvoie celles qui n'ont pas pu l'être."""
+        failed: list[str] = []
+        for key, wanted in settings.items():
             if key not in FEATURES or wanted is None:
                 continue
             switch = self.switches.get(entity_id, {}).get(key)
             current_switch = self.hass.states.get(switch) if switch else None
             if current_switch is None or current_switch.state in _NOT_READY:
                 _LOGGER.warning(
-                    "%s : fonction « %s » indisponible (interrupteur Faikout absent : "
-                    "activer « HA switches » dans Faikout)", entity_id, key
+                    "%s : fonction « %s » indisponible (interrupteur Faikout %s : "
+                    "vérifier l'option « HA switches » de Faikout)",
+                    entity_id, key, switch or "absent",
                 )
+                failed.append(f"{entity_id}:{key}")
                 continue
             if current_switch.state != ("on" if wanted else "off"):
-                await self.hass.services.async_call(
-                    "switch", "turn_on" if wanted else "turn_off",
-                    {ATTR_ENTITY_ID: switch}, blocking=True,
-                )
+                try:
+                    await self.hass.services.async_call(
+                        "switch", "turn_on" if wanted else "turn_off",
+                        {ATTR_ENTITY_ID: switch}, blocking=True,
+                    )
+                except HomeAssistantError as err:
+                    _LOGGER.warning("%s : échec de « %s » : %s", switch, key, err)
+                    failed.append(f"{entity_id}:{key}")
+        return failed
+
+    def features_info(self, gid: str) -> dict[str, dict[str, dict[str, str | None]]]:
+        """Diagnostic : interrupteur et état de chaque fonction Daikin des splits du groupe."""
+        result = {}
+        for entity_id in self.groups[gid][CONF_CLIMATES]:
+            found = self.switches.get(entity_id, {})
+            result[entity_id] = {
+                key: {
+                    "interrupteur": found.get(key),
+                    "etat": (st.state if (st := self.hass.states.get(found[key])) else "absent")
+                    if key in found
+                    else None,
+                }
+                for key in FEATURES
+            }
+        return result
 
     # ------------------------------------------------------------------ suivi des splits
 

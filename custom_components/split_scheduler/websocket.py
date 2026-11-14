@@ -156,8 +156,8 @@ async def ws_manual(
     if not settings:
         connection.send_error(msg["id"], "invalid", "Aucun réglage")
         return
-    await scheduler.async_manual_settings(msg["group_id"], settings)
-    connection.send_result(msg["id"])
+    failed = await scheduler.async_manual_settings(msg["group_id"], settings)
+    connection.send_result(msg["id"], {"non_appliques": failed})
 
 
 @websocket_api.websocket_command(

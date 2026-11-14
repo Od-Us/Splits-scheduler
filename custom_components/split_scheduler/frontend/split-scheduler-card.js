@@ -22,7 +22,7 @@
  *       chart: [ambient, setpoint, outdoor]  # courbes du jour (au choix)
  */
 
-const CARD_VERSION = "1.11.0";
+const CARD_VERSION = "1.11.1";
 const ICON_URL = new URL("icon.png", import.meta.url).href;
 
 const GROUP_DEFAULTS = {
@@ -32,6 +32,7 @@ const GROUP_DEFAULTS = {
   manual: ["temperature", "fan_mode"],
   compressor: [],
   compressor_timeline: false,
+  show_daikin: true,
   chart: [],
 };
 
@@ -113,6 +114,10 @@ const I18N = {
     t_ambient: "Ambiance",
     t_setpoint: "Consigne",
     e_compressor_timeline: "Frise des démarrages du compresseur (sous celle des profils)",
+    e_daikin: "Partie « Modifier » : boutons des fonctions Daikin (si les splits du groupe en ont)",
+    feat_unavailable: "indisponible",
+    feat_failed: "{f} : pas de réponse de {s}. Vérifiez l'option « HA switches » du module Faikout.",
+    feat_wait: "en attente du split…",
     e_chart: "Courbes du jour",
     ch_none: "Aucune",
     ch_ambient: "Température ambiante",
@@ -251,6 +256,10 @@ const I18N = {
     t_ambient: "Room",
     t_setpoint: "Target",
     e_compressor_timeline: "Compressor starts timeline (below the profile timeline)",
+    e_daikin: "“Modify” section: Daikin function buttons (if the group's splits have them)",
+    feat_unavailable: "unavailable",
+    feat_failed: "{f}: no answer from {s}. Check the “HA switches” option of the Faikout module.",
+    feat_wait: "waiting for the split…",
     e_chart: "Today's charts",
     ch_none: "None",
     ch_ambient: "Room temperature",
@@ -551,7 +560,7 @@ class SplitSchedulerCard extends HTMLElement {
       const s = this._hass.states[id];
       return s ? `${id}:${s.last_updated}` : id;
     });
-    return [JSON.stringify(this._config), this._error, this._confirm ? "confirm" : "", JSON.stringify(this._pending), [...this._expanded].join(), [...this._splitsOpen].join(), lang(this._hass), this._historyStamp, ...parts].join("|");
+    return [JSON.stringify(this._config), this._error, this._confirm ? "confirm" : "", JSON.stringify(this._featPending || {}), JSON.stringify(this._featMsg || {}), JSON.stringify(this._pending), [...this._expanded].join(), [...this._splitsOpen].join(), lang(this._hass), this._historyStamp, ...parts].join("|");
   }
 
   _render() {
@@ -824,11 +833,20 @@ class SplitSchedulerCard extends HTMLElement {
     const result = [];
     const per = g.info.features || {};
     for (const key of ["comfort", "streamer", "sensor_mode", "quiet_outdoor"]) {
-      const states = g.info.climates.map((eid) => per[eid]?.[key]).filter(Boolean).map((sw) => this._state(sw)?.state);
-      if (states.length) result.push({ key, on: states.every((v) => v === "on") });
+      const switches = g.info.climates.map((eid) => per[eid]?.[key]).filter(Boolean);
+      if (!switches.length) continue;
+      const states = switches.map((sw) => this._state(sw)?.state).filter((v) => v === "on" || v === "off");
+      result.push({ key, on: states.length > 0 && states.every((v) => v === "on"), available: states.length > 0, switches });
     }
     const boost = g.info.climates.map((eid) => this._state(eid)).filter((c) => (c?.attributes?.preset_modes || []).includes("boost"));
-    if (boost.length) result.push({ key: "powerful", on: boost.every((c) => c.attributes.preset_mode === "boost") });
+    if (boost.length) result.push({ key: "powerful", on: boost.every((c) => c.attributes.preset_mode === "boost"), available: true, switches: [] });
+    // Appui en cours : on montre l'état demandé jusqu'à la réponse du split
+    for (const item of result) {
+      const p = this._featPending?.[`${g.group}|${item.key}`];
+      if (!p) continue;
+      if (item.on === p.want) delete this._featPending[`${g.group}|${item.key}`];
+      else { item.on = p.want; item.pending = true; }
+    }
     return result;
   }
 
@@ -1189,12 +1207,13 @@ class SplitSchedulerCard extends HTMLElement {
         parts.push(`<div class="col gap10"><span>${esc(this._t("manual"))}${who}</span>${rows.join("")}</div>`);
       }
     }
-    const daikin = this._featureStates(g);
+    const daikin = g.show_daikin === false ? [] : this._featureStates(g);
     if (daikin.length) {
       const L = I18N[lang(this._hass)];
-      const buttons = daikin.map(({ key, on }) => `<button type="button" class="feat ${on ? "on" : ""}" role="switch" aria-checked="${on}" data-action="feature" data-group="${gid}" data-value="${key}" title="${esc(L.feature_long[key])}">
-        <span class="fi" aria-hidden="true">${FEATURE_ICONS[key]}</span><span class="fl">${esc(L.features[key])}</span><i></i></button>`).join("");
-      parts.push(`<div class="col gap8"><span>${esc(this._t("daikin"))}${g.info.climates.length > 1 ? ` <span class="muted">(${esc(this._t("manual_all"))})</span>` : ""}</span><div class="feats">${buttons}</div></div>`);
+      const buttons = daikin.map(({ key, on, available, pending }) => `<button type="button" class="feat ${on ? "on" : ""} ${pending ? "pending" : ""}" role="switch" aria-checked="${on}" data-action="feature" data-group="${gid}" data-value="${key}" title="${esc(L.feature_long[key])}${available ? "" : ` — ${esc(this._t("feat_unavailable"))}`}" ${available ? "" : "disabled"}>
+        <span class="fi" aria-hidden="true">${FEATURE_ICONS[key]}</span><span class="fl">${esc(L.features[key])}${available ? "" : `<small> · ${esc(this._t("feat_unavailable"))}</small>`}${pending ? `<small> · ${esc(this._t("feat_wait"))}</small>` : ""}</span><i></i></button>`).join("");
+      const msg = this._featMsg?.[g.group];
+      parts.push(`<div class="col gap8"><span>${esc(this._t("daikin"))}${g.info.climates.length > 1 ? ` <span class="muted">(${esc(this._t("manual_all"))})</span>` : ""}</span><div class="feats">${buttons}</div>${msg ? `<span class="small err" role="alert">${esc(msg)}</span>` : ""}</div>`);
     }
     const sw = this._state(g.info.entities.programming);
     if (sw) {
@@ -1259,11 +1278,8 @@ class SplitSchedulerCard extends HTMLElement {
       case "feature": {
         const item = this._featureStates(g).find((f) => f.key === value);
         if (!item) break;
-        if (value === "powerful") {
-          const c = g.info.climates.map((eid) => this._state(eid)).find((x) => (x?.attributes?.preset_modes || []).includes("boost"));
-          const normal = (c?.attributes?.preset_modes || []).includes("home") ? "home" : "none";
-          this._manual(group, { preset_mode: item.on ? normal : "boost" });
-        } else this._manual(group, { [value]: !item.on });
+        if (!item.available) break;
+        this._featurePress(g, item);
         break;
       }
       case "split-resume":
@@ -1343,6 +1359,40 @@ class SplitSchedulerCard extends HTMLElement {
         </div>
       </div>
     </div>`;
+  }
+
+  /** Appui sur une fonction Daikin : état affiché tout de suite, contrôle de la réponse du split. */
+  async _featurePress(g, item) {
+    const key = `${g.group}|${item.key}`;
+    const want = !item.on;
+    this._featPending = this._featPending || {};
+    this._featMsg = this._featMsg || {};
+    this._featPending[key] = { want };
+    delete this._featMsg[g.group];
+    this._signature = "";
+    this._render();
+    const L = I18N[lang(this._hass)];
+    const fail = (who) => {
+      delete this._featPending[key];
+      this._featMsg[g.group] = this._t("feat_failed").replace("{f}", L.feature_long[item.key]).replace("{s}", who || "le split");
+      this._signature = "";
+      this._render();
+    };
+    let settings;
+    if (item.key === "powerful") {
+      const c = g.info.climates.map((eid) => this._state(eid)).find((x) => (x?.attributes?.preset_modes || []).includes("boost"));
+      const normal = (c?.attributes?.preset_modes || []).includes("home") ? "home" : "none";
+      settings = { preset_mode: want ? "boost" : normal };
+    } else settings = { [item.key]: want };
+    try {
+      const res = await this._hass.callWS({ type: "split_scheduler/manual", group_id: g.group, ...settings });
+      if (res?.non_appliques?.length) { fail(item.switches.join(", ")); return; }
+    } catch (err) {
+      fail(err?.message);
+      return;
+    }
+    // Sans changement d'état du split au bout de 20 s : message
+    setTimeout(() => { if (this._featPending?.[key]) fail(item.switches.join(", ")); }, 20000);
   }
 
   _onChange(ev) {
@@ -1955,6 +2005,9 @@ const CARD_CSS = `
   .feat i::after { content: ""; position: absolute; top: 2px; left: 2px; width: 14px; height: 14px; border-radius: 50%; background: #fff; transition: left .15s; }
   .feat.on i { background: var(--primary-color); }
   .feat.on i::after { left: 16px; }
+  .feat.pending { opacity: .7; }
+  .feat:disabled { opacity: .5; cursor: default; }
+  .feat small { color: var(--secondary-text-color); font-size: 11.5px; }
   .fchips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: -4px; }
   .bigrow { white-space: nowrap; }
   .status { min-width: 0; overflow: hidden; flex-shrink: 1; }
@@ -2209,7 +2262,7 @@ class SplitSchedulerCardEditor extends HTMLElement {
         (value) => save(value, keysA),
       ));
       details.append(namesBox);
-      const keysB = ["show_planning", "show_profiles", "manual", "compressor", "compressor_timeline", "chart"];
+      const keysB = ["show_planning", "show_profiles", "manual", "compressor", "compressor_timeline", "show_daikin", "chart"];
       details.append(this._form(
         pick(keysB, true),
         [
@@ -2218,6 +2271,7 @@ class SplitSchedulerCardEditor extends HTMLElement {
           { name: "manual", label: "e_manual", selector: { select: { multiple: true, mode: "list", options: manualOptions } } },
           { name: "compressor", label: "e_compressor", selector: { select: { multiple: true, mode: "list", options: compressorOptions } } },
           { name: "compressor_timeline", label: "e_compressor_timeline", selector: { boolean: {} } },
+          { name: "show_daikin", label: "e_daikin", selector: { boolean: {} } },
           { name: "chart", label: "e_chart", selector: { select: { multiple: true, mode: "list", options: chartOptions } } },
         ],
         (value) => save(value, keysB),

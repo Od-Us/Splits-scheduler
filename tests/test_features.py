@@ -115,3 +115,17 @@ async def test_comfort_with_vertical_swing_is_refused(hass: HomeAssistant):
     profiles = flow._progress[fid]._options["profiles"]
     nuit = next(p for p in profiles.values() if p["name"] == "Nuit")
     assert nuit["comfort"] is True and nuit["sensor_mode"] is False
+
+
+async def test_card_function_button_reports_unanswered_switch(hass: HomeAssistant, freezer):
+    one, sw1 = _faikout_split(hass, "chambre_1", ("streamer", "quiet"))
+    two, sw2 = _faikout_split(hass, "chambre_2", ("quiet",))
+    entry, calls = await _setup(hass, freezer, [one, two], {})
+    scheduler = entry.runtime_data
+    hass.states.async_set(sw2["quiet"], "unavailable")   # module sans réponse
+    assert await scheduler.async_manual_settings("chambres", {"quiet_outdoor": True}) == [f"{two}:quiet_outdoor"]
+    # chambre 2 n'a pas de Streamer : ignorée, pas d'échec
+    assert await scheduler.async_manual_settings("chambres", {"streamer": True}) == []
+    diag = hass.states.get("select.chambres_profil").attributes["fonctions_daikin"]
+    assert diag[two]["quiet_outdoor"] == {"interrupteur": sw2["quiet"], "etat": "unavailable"}
+    assert diag[two]["streamer"] == {"interrupteur": None, "etat": None}
