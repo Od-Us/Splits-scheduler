@@ -169,19 +169,21 @@ async def ws_manual(
 async def ws_override_shift(
     hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]
 ) -> None:
-    """Décale l'heure de reprise d'une dérogation (boutons −30 / +30 de la carte)."""
+    """Durée d'une dérogation (boutons −30 / +30 de la carte)."""
     scheduler = _scheduler(hass)
     if scheduler is None or msg["group_id"] not in scheduler.groups:
         connection.send_error(msg["id"], "not_found", "Groupe inconnu")
         return
     if "entity_id" in msg:  # dérogation d'un seul split
-        until = await scheduler.async_shift_split(msg["group_id"], msg["entity_id"], msg["minutes"])
+        ok = await scheduler.async_shift_split(msg["group_id"], msg["entity_id"], msg["minutes"])
+        resume = scheduler.split_resume_at(msg["group_id"], msg["entity_id"])
     else:
-        until = await scheduler.async_shift_override(msg["group_id"], msg["minutes"])
-    if until is None:
+        ok = await scheduler.async_shift_override(msg["group_id"], msg["minutes"])
+        resume = scheduler.resume_at(msg["group_id"])
+    if not ok:
         connection.send_error(msg["id"], "no_override", "Aucune dérogation en cours")
         return
-    connection.send_result(msg["id"], {"reprise": until.isoformat()})
+    connection.send_result(msg["id"], {"reprise": resume.isoformat() if resume else None})
 
 
 @websocket_api.websocket_command(

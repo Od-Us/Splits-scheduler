@@ -154,15 +154,20 @@ création des entités ; ils se retrouvent dans la page de l'appareil.
 
 - **Durée d'une dérogation** : par défaut (et pour un changement fait à la
   télécommande), jusqu'au prochain créneau. Sur la carte, les boutons **−30min** et
-  **+30min** du bandeau de dérogation avancent ou reculent l'heure de reprise
-  (entre 30 minutes et 24 heures à partir de maintenant). La durée choisie
-  l'emporte : un créneau passé pendant la dérogation est ignoré, et à l'heure de
+  **+30min** du bandeau règlent une **durée à partir de maintenant** : un appui
+  sur +30 prévoit le retour à la programmation dans 30 minutes, puis 1 h,
+  1 h 30… (au plus 24 h) ; −30 la réduit, et revenir à zéro rend « jusqu'au
+  prochain créneau ». Le bandeau indique « Reste 1 h 30 » ou « Jusqu'au
+  prochain créneau ». La durée choisie l'emporte : un créneau passé pendant la dérogation est ignoré, et à l'heure de
   reprise le profil prévu à ce moment est appliqué. L'heure de reprise survit à
   un redémarrage ; attributs `reprise`, `reprise_profil`, `creneau_ignore`,
   `derogation_depuis` sur le sélecteur de profil.
+- **Ventilateur et oscillation** : les changer (télécommande, carte,
+  thermostat) **n'est pas une dérogation** ; la programmation continue, et le
+  prochain changement de profil rétablit les valeurs prévues.
 - **Réglage sur un split** (télécommande, fenêtre de son thermostat) : si un
-  split s'écarte du profil appliqué (mode, consigne à plus de 0,3 °C près,
-  ventilateur, oscillation) plus de 2 minutes après l'envoi, **ce split
+  split s'écarte du profil appliqué (mode, consigne à plus de 0,3 °C près)
+  plus de 2 minutes après l'envoi, **ce split
   seul** passe en dérogation (pour un groupe d'un seul split, c'est **tout le
   groupe**, dont la consigne suit alors celle du split) ; les autres splits du groupe
   continuent de suivre les créneaux et l'adaptation à l'extérieur. Il reprend

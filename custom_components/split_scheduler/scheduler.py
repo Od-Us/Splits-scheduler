@@ -66,6 +66,8 @@ from .planning import Program, current_occurrence, next_occurrence
 _LOGGER = logging.getLogger(__name__)
 
 _NOT_READY = (STATE_UNAVAILABLE, STATE_UNKNOWN)
+# Réglages qui ne valent pas dérogation (ni depuis la carte, ni à la télécommande)
+_NOT_AN_OVERRIDE = (ATTR_FAN_MODE, ATTR_SWING_MODE, ATTR_SWING_HORIZONTAL_MODE)
 
 # (réglage du profil, attribut d'état, attribut listant les valeurs, service)
 _MODE_SETTINGS = (
@@ -618,17 +620,19 @@ class SplitScheduler:
         upcoming = next_occurrence(self.program(gid, state.planning_id), dt_util.now())
         return upcoming.start if upcoming else None
 
-    async def async_shift_override(self, gid: str, minutes: int) -> datetime | None:
-        """Avance ou recule l'heure de reprise (entre 30 min et 24 h à partir de maintenant)."""
+    async def async_shift_override(self, gid: str, minutes: int) -> bool:
+        """Boutons −30 / +30 : durée de la dérogation à partir de maintenant.
+
+        Sans appui, elle court jusqu'au prochain créneau ; +30 la fixe à 30 min, puis
+        60, 90… (au plus 24 h) ; revenir à 0 rend « jusqu'au prochain créneau ».
+        False s'il n'y a pas de dérogation.
+        """
         state = self.states[gid]
-        base = self.resume_at(gid)
-        if base is None:
-            return None
-        now = dt_util.utcnow()
-        wanted = dt_util.as_utc(base) + timedelta(minutes=minutes)
-        state.override_until = min(max(wanted, now + timedelta(minutes=30)), now + timedelta(hours=24))
+        if not state.override:
+            return False
+        state.override_until = _shifted_duration(state.override_until, minutes)
         await self.async_refresh_group(gid)
-        return state.override_until
+        return True
 
     def split_resume_at(self, gid: str, entity_id: str) -> datetime | None:
         """Heure de reprise d'un split en dérogation : choisie, sinon le prochain créneau."""
@@ -640,18 +644,15 @@ class SplitScheduler:
         upcoming = next_occurrence(self.program(gid, self.states[gid].planning_id), dt_util.now())
         return upcoming.start if upcoming else None
 
-    async def async_shift_split(self, gid: str, entity_id: str, minutes: int) -> datetime | None:
-        """Avance ou recule la reprise d'un split (entre 30 min et 24 h à partir de maintenant)."""
+    async def async_shift_split(self, gid: str, entity_id: str, minutes: int) -> bool:
+        """Boutons −30 / +30 d'un split en dérogation : durée, comme pour le groupe."""
         ovr = self.states[gid].split_overrides.get(entity_id)
-        base = self.split_resume_at(gid, entity_id)
-        if ovr is None or base is None:
-            return None
-        now = dt_util.utcnow()
-        wanted = dt_util.as_utc(base) + timedelta(minutes=minutes)
-        ovr.until = min(max(wanted, now + timedelta(minutes=30)), now + timedelta(hours=24))
+        if ovr is None:
+            return False
+        ovr.until = _shifted_duration(ovr.until, minutes)
         await self._async_split_timers(gid, dt_util.now())
         self._changed()
-        return ovr.until
+        return True
 
     async def async_resume_split(self, gid: str, entity_id: str, *, refresh: bool = True) -> None:
         """Remet un seul split au profil en cours du groupe."""
@@ -749,6 +750,21 @@ class SplitScheduler:
         """
         state = self.states[gid]
         state.applied_at = dt_util.utcnow()  # nos propres commandes : pas de détection
+        comfort_only = all(key in _NOT_AN_OVERRIDE for key in settings)
+        if comfort_only:
+            # Ventilateur / oscillation : envoyés à tous les splits, sans dérogation ;
+            # le prochain changement de profil les rétablit.
+            _LOGGER.info("Groupe « %s » : réglage %s (sans dérogation)", self.groups[gid]["name"], settings)
+            for entity_id in self.groups[gid][CONF_CLIMATES]:
+                current = self.hass.states.get(entity_id)
+                if current is None or current.state in _NOT_READY:
+                    continue
+                try:
+                    await self._async_send(entity_id, current, settings)
+                except (HomeAssistantError, ValueError) as err:
+                    _LOGGER.warning("Échec du réglage de %s : %s", entity_id, err)
+            self._changed()
+            return
         if state.enabled and state.active_profile_id is not None:
             if not state.override:
                 state.override_since = dt_util.utcnow()
@@ -1036,10 +1052,7 @@ def _deviates(state: State, profile: dict) -> bool:
         and abs(float(current) - target_temperature(attrs, temperature)) > TEMPERATURE_TOLERANCE
     ):
         return True
-    for setting, attr, choices, _ in _MODE_SETTINGS:
-        value = profile.get(setting)
-        if value is not None and value in attrs.get(choices, []) and attrs.get(attr) != value:
-            return True
+    # Ventilateur et oscillation : pas des dérogations (le prochain profil les rétablit)
     return False
 
 
@@ -1060,11 +1073,26 @@ def _differences(state: State, profile: dict) -> list[dict[str, Any]]:
         wanted = target_temperature(attrs, temperature)
         if abs(float(current) - wanted) > TEMPERATURE_TOLERANCE:
             result.append({"reglage": "temperature", "valeur": float(current), "prevu": wanted})
-    for setting, attr, choices, _ in _MODE_SETTINGS:
-        value = profile.get(setting)
-        if value is not None and value in attrs.get(choices, []) and attrs.get(attr) != value:
-            result.append({"reglage": attr, "valeur": attrs.get(attr), "prevu": value})
     return result
+
+
+DURATION_STEP = timedelta(minutes=30)
+
+
+def _shifted_duration(until: datetime | None, minutes: int) -> datetime | None:
+    """Nouvelle fin de dérogation après un appui sur −30 / +30.
+
+    La durée restante est arrondie à la demi-heure supérieure puis décalée ; une durée
+    nulle (ou négative) rend None : « jusqu'au prochain créneau ». Au plus 24 h.
+    """
+    now = dt_util.utcnow()
+    steps = 0
+    if until is not None and until > now:
+        steps = -(-(until - now) // DURATION_STEP)  # arrondi supérieur
+    steps += round(minutes / 30)
+    if steps <= 0:
+        return None
+    return now + min(steps * DURATION_STEP, timedelta(hours=24))
 
 
 def target_temperature(attrs: Mapping[str, Any], wanted: float) -> float:

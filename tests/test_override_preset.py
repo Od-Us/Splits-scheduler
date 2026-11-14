@@ -59,10 +59,13 @@ async def test_override_duration_wins_over_slots(hass: HomeAssistant, freezer):
     assert attrs["reprise"] == datetime(2026, 11, 10, 22, 30, tzinfo=PARIS).isoformat()  # par défaut : créneau
     assert attrs["reprise_choisie"] is False and attrs["creneau_ignore"] is None
 
-    # +30 deux fois : reprise à 23:30, le créneau de 22:30 est ignoré
+    # +30 : dans 30 min ; trois appuis : dans 1 h 30, soit 23:00 — le créneau de 22:30 est ignoré
+    assert await scheduler.async_shift_override("salon", 30)
+    assert dt_util.parse_datetime(_attrs(hass)["reprise"]) == datetime(2026, 11, 10, 22, 0, tzinfo=PARIS)
     await scheduler.async_shift_override("salon", 30)
-    until = await scheduler.async_shift_override("salon", 30)
-    assert dt_util.as_local(until) == datetime(2026, 11, 10, 23, 30, tzinfo=PARIS)
+    await scheduler.async_shift_override("salon", 30)
+    until = dt_util.parse_datetime(_attrs(hass)["reprise"])
+    assert until == datetime(2026, 11, 10, 23, 0, tzinfo=PARIS)
     attrs = _attrs(hass)
     assert attrs["creneau_ignore"]["profil"] == "Eco" and attrs["reprise_profil"] == "Eco"
     assert dt_util.parse_datetime(hass.states.get("sensor.salon_prochain_changement").state) == until
@@ -73,7 +76,7 @@ async def test_override_duration_wins_over_slots(hass: HomeAssistant, freezer):
     calls["set_temperature"].clear()
     await _at(hass, freezer, datetime(2026, 11, 10, 22, 30, tzinfo=PARIS))
     assert calls["set_temperature"] == [] and _attrs(hass)["derogation"] is True
-    await _at(hass, freezer, datetime(2026, 11, 10, 23, 30, tzinfo=PARIS))
+    await _at(hass, freezer, datetime(2026, 11, 10, 23, 0, tzinfo=PARIS))
     assert [c.data["temperature"] for c in calls["set_temperature"]] == [18.0]   # Eco
     assert _attrs(hass)["derogation"] is False and _attrs(hass)["reprise"] is None
 
@@ -82,7 +85,7 @@ async def test_shift_limits_and_remote_default(hass: HomeAssistant, freezer):
     day = datetime(2026, 11, 10, 21, 30, tzinfo=PARIS)
     entry, _ = await _setup(hass, freezer, day)
     scheduler = entry.runtime_data
-    assert await scheduler.async_shift_override("salon", 30) is None    # pas de dérogation
+    assert await scheduler.async_shift_override("salon", 30) is False   # pas de dérogation
     # Groupe d'un seul split : la télécommande met tout le groupe en dérogation
     freezer.tick(timedelta(minutes=5))
     hass.states.async_set(SPLIT, "heat", {**ATTRS, "temperature": 23})
@@ -95,14 +98,23 @@ async def test_shift_limits_and_remote_default(hass: HomeAssistant, freezer):
     hass.states.async_set(SPLIT, "heat", {**ATTRS, "temperature": 22})
     await hass.async_block_till_done()
     assert float(hass.states.get("sensor.salon_consigne").state) == 22.0
-    # -30 trois fois : jamais moins de 30 min à partir de maintenant
-    for _ in range(3):
-        until = await scheduler.async_shift_override("salon", -30)
-    assert until == dt_util.utcnow() + timedelta(minutes=30)
+    # −30 sans durée choisie : rien ne change (jusqu'au prochain créneau)
+    await scheduler.async_shift_override("salon", -30)
+    assert _attrs(hass)["reprise_choisie"] is False
+    # +30 trois fois puis −30 : dans 1 h
+    for minutes in (30, 30, 30, -30):
+        await scheduler.async_shift_override("salon", minutes)
+    assert dt_util.parse_datetime(_attrs(hass)["reprise"]) == dt_util.utcnow() + timedelta(hours=1)
     # +30 x 60 : jamais plus de 24 h
     for _ in range(60):
-        until = await scheduler.async_shift_override("salon", 30)
-    assert until == dt_util.utcnow() + timedelta(hours=24)
+        await scheduler.async_shift_override("salon", 30)
+    assert dt_util.parse_datetime(_attrs(hass)["reprise"]) == dt_util.utcnow() + timedelta(hours=24)
+    # −30 jusqu'à zéro : retour à « jusqu'au prochain créneau »
+    for _ in range(48):
+        await scheduler.async_shift_override("salon", -30)
+    attrs = _attrs(hass)
+    assert attrs["reprise_choisie"] is False and attrs["derogation"] is True
+    assert dt_util.parse_datetime(attrs["reprise"]) == datetime(2026, 11, 10, 22, 30, tzinfo=PARIS)
     # Reprendre maintenant efface la reprise choisie
     await hass.services.async_call("button", "press", {"entity_id": "button.salon_reprendre_la_programmation"}, blocking=True)
     assert _attrs(hass)["derogation"] is False and _attrs(hass)["reprise_choisie"] is False

@@ -22,7 +22,7 @@
  *       chart: [ambient, setpoint, outdoor]  # courbes du jour (au choix)
  */
 
-const CARD_VERSION = "1.13.0";
+const CARD_VERSION = "1.14.0";
 const ICON_URL = new URL("icon.png", import.meta.url).href;
 
 const GROUP_DEFAULTS = {
@@ -165,6 +165,8 @@ const I18N = {
     earlier: "Reprise 30 minutes plus tôt",
     later: "Reprise 30 minutes plus tard",
     skipped: "{t} {p} ignoré · ensuite {n}",
+    for_duration: "Reste {d}",
+    until_slot: "Jusqu'au prochain créneau",
     then: "Ensuite {n}",
     m_quiet_outdoor: "Unité extérieure silencieuse (si les splits l'ont)",
     quiet: "Ext. silencieux",
@@ -302,6 +304,8 @@ const I18N = {
     earlier: "Resume 30 minutes earlier",
     later: "Resume 30 minutes later",
     skipped: "{t} {p} skipped · then {n}",
+    for_duration: "{d} left",
+    until_slot: "Until the next slot",
     then: "Then {n}",
     m_quiet_outdoor: "Quiet outdoor unit (if the splits have it)",
     quiet: "Quiet outdoor",
@@ -719,9 +723,10 @@ class SplitSchedulerCard extends HTMLElement {
       const gid = esc(g.group);
       const resume = pa.reprise;
       const skip = pa.creneau_ignore;
-      const note = skip
+      const after = skip
         ? this._t("skipped").replace("{t}", this._time(skip.heure)).replace("{p}", skip.profil || "").replace("{n}", pa.reprise_profil || "")
         : (pa.reprise_profil ? this._t("then").replace("{n}", pa.reprise_profil) : "");
+      const note = [this._durationLabel(pa.reprise_choisie, resume), after].filter(Boolean).join(" · ");
       banner += `<div class="banner warn compact">
         <div class="row">
           <span class="when"><span class="small">${esc(this._t("resume_at"))}</span> <strong>${resume ? esc(this._time(resume)) : "–"}</strong></span>
@@ -827,7 +832,7 @@ class SplitSchedulerCard extends HTMLElement {
     const gid = esc(g.group);
     const eid = esc(o.entity_id);
     const diff = this._ecarts(o);
-    const follow = others > 0 ? plural(this._t("others_follow"), others) : "";
+    const follow = [this._durationLabel(o.reprise_choisie, o.reprise), others > 0 ? plural(this._t("others_follow"), others) : ""].filter(Boolean).join(" · ");
     return `<div class="banner warn compact">
         <div class="small head"><b class="who">${esc(this._splitName(o.entity_id))}</b>${diff ? ` · ${esc(diff)}` : ""}</div>
         <div class="row">
@@ -838,6 +843,16 @@ class SplitSchedulerCard extends HTMLElement {
         </div>
         ${follow ? `<span class="small note">${esc(follow)}</span>` : ""}
       </div>`;
+  }
+
+  /** « Durée 1 h 30 » (choisie avec −30 / +30) ou « Jusqu'au prochain créneau ». */
+  _durationLabel(chosen, resume) {
+    if (!chosen || !resume) return this._t("until_slot");
+    const minutes = Math.max(0, Math.round((new Date(resume).getTime() - Date.now()) / 60000));
+    const h = Math.floor(minutes / 60);
+    const m = minutes % 60;
+    const d = h ? `${h} h${m ? ` ${String(m).padStart(2, "0")}` : ""}` : `${m} min`;
+    return this._t("for_duration").replace("{d}", d);
   }
 
   _openSplit(g, entityId) {

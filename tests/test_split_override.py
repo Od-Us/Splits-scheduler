@@ -65,8 +65,9 @@ async def test_only_changed_split_is_held(hass: HomeAssistant, freezer):
     assert [o["entity_id"] for o in _overrides(hass)] == [SPLITS[1]]
     assert hass.states.get("select.chambres_profil").attributes["derogation"] is False
 
-    # Reprise choisie à 23:30 : le créneau de 22:30 n'est envoyé qu'aux deux autres
-    await scheduler.async_shift_split("chambres", SPLITS[1], 60)
+    # Durée choisie : 2 h (fin 23:05) : le créneau de 22:30 n'est envoyé qu'aux deux autres
+    for _ in range(4):
+        await scheduler.async_shift_split("chambres", SPLITS[1], 30)
     calls["set_temperature"].clear()
     await _at(hass, freezer, datetime(2026, 11, 10, 22, 30, tzinfo=PARIS))
     assert [c.data["entity_id"] for c in calls["set_temperature"]] == [SPLITS[0], SPLITS[2]]
@@ -134,3 +135,18 @@ async def test_group_target_sensor(hass: HomeAssistant, freezer):
     await hass.services.async_call("switch", "turn_off",
                                    {"entity_id": "switch.chambres_programmation"}, blocking=True)
     assert hass.states.get("sensor.chambres_consigne").state == "unknown"
+
+
+async def test_fan_and_swing_are_not_overrides(hass: HomeAssistant, freezer):
+    entry, calls = await _setup(hass, freezer, datetime(2026, 11, 10, 21, 0, tzinfo=PARIS))
+    scheduler = entry.runtime_data
+    # Télécommande : ventilateur et oscillation changés -> pas de dérogation
+    await _remote(hass, freezer, SPLITS[0], fan_mode="high", swing_mode="V")
+    assert _overrides(hass) == []
+    assert hass.states.get("sensor.chambres_statut").state == "scheduled"
+    # Carte : ventilateur seul -> envoyé, sans dérogation
+    await scheduler.async_manual_settings("chambres", {"fan_mode": "night"})
+    assert hass.states.get("select.chambres_profil").attributes["derogation"] is False
+    # Consigne depuis la carte : dérogation
+    await scheduler.async_manual_settings("chambres", {"temperature": 22})
+    assert hass.states.get("select.chambres_profil").attributes["derogation"] is True
