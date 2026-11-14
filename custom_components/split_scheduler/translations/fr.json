@@ -209,6 +209,7 @@
           "day_sat": "Samedi",
           "day_sun": "Dimanche",
           "program_copy": "Copier un jour vers d'autres jours",
+          "program_copy_groups": "Copier ce programme vers d'autres groupes ou plannings",
           "program_edit": "Saisie rapide (texte)",
           "init": "Terminé (retour au menu)"
         },
@@ -262,6 +263,18 @@
         "data_description": {
           "outdoor_sensor": "Vide : capteur « Outside » de Faikout (sonde de l'unité extérieure), détecté automatiquement. Il peut être faussé quand l'unité tourne, surtout en climatisation (air chaud rejeté) : un capteur à l'ombre ou une station météo est plus fiable."
         }
+      },
+      "program_copy_groups": {
+        "title": "{group} — copier le programme de la semaine",
+        "description": "Le programme de la semaine de **{group}** (planning **{planning}**) remplace celui de chaque groupe choisi, dans chaque planning choisi. Les programmes des autres groupes et plannings ne changent pas.",
+        "data": {
+          "plannings": "Dans les plannings",
+          "groups": "Vers les groupes"
+        },
+        "data_description": {
+          "plannings": "Par défaut, le planning en cours d'édition.",
+          "groups": "Le groupe source peut être choisi pour le copier dans d'autres plannings."
+        }
       }
     },
     "error": {
@@ -276,7 +289,9 @@
       "time_required": "Indiquez une heure.",
       "profile_required": "Choisissez un profil.",
       "allowed_required": "Cochez au moins un profil.",
-      "allowed_in_use": "Profil utilisé dans le programme de ce planning : {used}. Retirez-le d'abord des lignes concernées."
+      "allowed_in_use": "Profil utilisé dans le programme de ce planning : {used}. Retirez-le d'abord des lignes concernées.",
+      "copy_target_required": "Choisissez au moins un planning et un groupe (autre que le programme d'origine).",
+      "copy_not_allowed": "Copie impossible : des profils du programme ne sont pas autorisés dans ces plannings : {refused}. Autorisez-les dans le type de planning, ou retirez ces plannings."
     }
   },
   "selector": {

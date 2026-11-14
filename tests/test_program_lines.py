@@ -180,3 +180,47 @@ async def test_order_survives_sorted_storage(hass: HomeAssistant):
     ]
     scheduler = entry.runtime_data
     assert [g["name"] for g in scheduler.groups.values()] == ["Salon", "Bureau"]
+
+
+async def test_copy_week_to_other_groups_and_plannings(hass: HomeAssistant):
+    entry, flow, fid = await _entry_with_group(hass)
+    hass.states.async_set("climate.chambre", "heat", ATTRS)
+    await flow.async_configure(fid, {"next_step_id": "groups"})
+    await flow.async_configure(fid, {"next_step_id": "group_add"})
+    await flow.async_configure(fid, {"name": "Chambre", "climates": ["climate.chambre"]})
+    await flow.async_configure(fid, {"next_step_id": "init"})
+    opts = flow._progress[fid]._options
+    ids = {g["name"]: gid for gid, g in opts["groups"].items()}
+
+    await flow.async_configure(fid, {"next_step_id": "program_pick"})
+    await flow.async_configure(fid, {"planning": "normal", "group": ids["Salon"]})
+    await flow.async_configure(fid, {"next_step_id": "program_edit"})
+    result = await flow.async_configure(fid, {"mon": "06:30 Confort, 22:30 Eco", "copy_monday_to": ["tue", "wed"]})
+    assert "program_copy_groups" in result["menu_options"]
+
+    result = await flow.async_configure(fid, {"next_step_id": "program_copy_groups"})
+    assert result["step_id"] == "program_copy_groups"
+    # Rien à copier : le programme d'origine seul
+    result = await flow.async_configure(fid, {"plannings": ["normal"], "groups": [ids["Salon"]]})
+    assert result["errors"] == {"base": "copy_target_required"}
+    # Profil non autorisé dans un planning de destination : refus, rien n'est copié
+    opts["plannings"]["absence"]["allowed_profiles"] = ["hors_gel"]
+    result = await flow.async_configure(fid, {"plannings": ["normal", "absence"], "groups": [ids["Chambre"]]})
+    assert result["errors"] == {"base": "copy_not_allowed"}
+    assert "Absence" in result["description_placeholders"]["refused"]
+    assert not opts["plannings"]["normal"].get("programs", {}).get(ids["Chambre"])
+    # Copie vers Chambre (Normal, Vacances) et vers Salon (Vacances)
+    result = await flow.async_configure(
+        fid, {"plannings": ["normal", "vacances"], "groups": [ids["Chambre"], ids["Salon"]]}
+    )
+    assert result["step_id"] == "program_week"
+    week = opts["plannings"]["normal"]["programs"][ids["Salon"]]
+    assert week["0"] == [["06:30", "confort"], ["22:30", "eco"]] and set(week) == {"0", "1", "2"}
+    for planning, group in (("normal", "Chambre"), ("vacances", "Chambre"), ("vacances", "Salon")):
+        assert opts["plannings"][planning]["programs"][ids[group]] == week
+    # Copies indépendantes : modifier l'une ne change pas les autres
+    opts["plannings"]["vacances"]["programs"][ids["Chambre"]]["0"].append(["23:00", "eco"])
+    assert len(week["0"]) == 2
+    await flow.async_configure(fid, {"next_step_id": "init"})
+    await flow.async_configure(fid, {"next_step_id": "save"})
+    assert entry.options["plannings"]["normal"]["programs"][ids["Chambre"]]["0"][0] == ["06:30", "confort"]

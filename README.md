@@ -94,6 +94,10 @@ Sur la carte de l'intégration, cliquer sur **Configurer**. Un menu propose :
     heure : une ligne ajoutée à 12:00 s'insère d'elle-même entre 08:30 et 17:00.
     Chaque profil proposé affiche ses réglages (« Confort — Chauffage · 20 °C »).
   - *Copier ce jour vers d'autres jours*, *Vider la journée*.
+  - *Copier ce programme vers d'autres groupes ou plannings* : toute la
+    semaine du groupe remplace celle des groupes cochés, dans les plannings
+    cochés (par défaut le planning en cours d'édition). Refusé si un profil du
+    programme n'est pas autorisé dans un planning de destination.
   - *Saisie rapide (texte)* : tous les jours d'un coup, sous la forme
     `06:30 Confort, 08:30 Eco, 18:00 Confort, 22:30 Eco` (formats `6h30`, `7h`
     et `7` acceptés, casse et accents ignorés).

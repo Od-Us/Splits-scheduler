@@ -209,6 +209,7 @@
           "day_sat": "Saturday",
           "day_sun": "Sunday",
           "program_copy": "Copy a day to other days",
+          "program_copy_groups": "Copy this schedule to other groups or plannings",
           "program_edit": "Quick entry (text)",
           "init": "Done (back to menu)"
         },
@@ -262,6 +263,18 @@
         "data_description": {
           "outdoor_sensor": "Empty: Faikout's “Outside” sensor (outdoor unit probe), detected automatically. It can be skewed while the unit runs, especially when cooling: a shaded sensor or weather station is more reliable."
         }
+      },
+      "program_copy_groups": {
+        "title": "{group} — copy the weekly schedule",
+        "description": "The weekly schedule of **{group}** (planning **{planning}**) replaces the schedule of each chosen group, in each chosen planning. Other groups and plannings are not changed.",
+        "data": {
+          "plannings": "In plannings",
+          "groups": "To groups"
+        },
+        "data_description": {
+          "plannings": "By default, the planning being edited.",
+          "groups": "The source group can be chosen to copy it into other plannings."
+        }
       }
     },
     "error": {
@@ -276,7 +289,9 @@
       "time_required": "Enter a time.",
       "profile_required": "Choose a profile.",
       "allowed_required": "Tick at least one profile.",
-      "allowed_in_use": "Profile used in this planning's program: {used}. Remove it from those lines first."
+      "allowed_in_use": "Profile used in this planning's program: {used}. Remove it from those lines first.",
+      "copy_target_required": "Choose at least one planning and one group (other than the original schedule).",
+      "copy_not_allowed": "Cannot copy: some profiles of this schedule are not allowed in these plannings: {refused}. Allow them in the planning type, or remove these plannings."
     }
   },
   "selector": {

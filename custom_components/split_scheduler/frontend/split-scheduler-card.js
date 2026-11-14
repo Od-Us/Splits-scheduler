@@ -22,7 +22,7 @@
  *       chart: [ambient, setpoint, outdoor]  # courbes du jour (au choix)
  */
 
-const CARD_VERSION = "1.9.0";
+const CARD_VERSION = "1.10.0";
 const ICON_URL = new URL("icon.png", import.meta.url).href;
 
 const GROUP_DEFAULTS = {
@@ -1804,7 +1804,7 @@ const CARD_CSS = `
   .wrap { display: flex; flex-direction: column; gap: 16px; padding: 8px; }
   .head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 16px; }
   .title { display: flex; align-items: center; gap: 12px; }
-  .title img { width: 44px; height: 44px; }
+  .title img { width: 44px; height: 44px; border-radius: 10px; }
   h1 { margin: 0; font-size: 24px; font-weight: 500; color: var(--primary-text-color); }
   h2 { margin: 0; font-size: 19px; font-weight: 500; color: var(--primary-text-color); }
   .global { display: flex; flex-direction: column; gap: 6px; }

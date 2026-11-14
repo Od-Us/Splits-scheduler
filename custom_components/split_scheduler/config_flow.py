@@ -97,12 +97,14 @@ def _new_id() -> str:
     return uuid.uuid4().hex[:8]
 
 
-def _picker(items: dict[str, dict], multiple: bool = False) -> SelectSelector:
+def _picker(
+    items: dict[str, dict], multiple: bool = False, mode: SelectSelectorMode = SelectSelectorMode.DROPDOWN
+) -> SelectSelector:
     return SelectSelector(
         SelectSelectorConfig(
             options=[SelectOptionDict(value=iid, label=item["name"]) for iid, item in items.items()],
             multiple=multiple,
-            mode=SelectSelectorMode.DROPDOWN,
+            mode=mode,
         )
     )
 
@@ -723,7 +725,7 @@ class SplitSchedulerOptionsFlow(OptionsFlow):
         return self.async_show_menu(
             step_id="program_week",
             menu_options=[f"day_{day}" for day in WEEKDAY_KEYS]
-            + ["program_copy", "program_edit", "init"],
+            + ["program_copy", "program_copy_groups", "program_edit", "init"],
             description_placeholders=placeholders,
         )
 
@@ -888,6 +890,59 @@ class SplitSchedulerOptionsFlow(OptionsFlow):
                 }
             ),
             description_placeholders=self._target_placeholders(),
+        )
+
+    async def async_step_program_copy_groups(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Copier tout le programme de la semaine vers d'autres groupes et/ou plannings."""
+        assert self._program_target is not None
+        source_planning, source_group = self._program_target
+        errors: dict[str, str] = {}
+        placeholders = self._target_placeholders()
+        if user_input is not None:
+            plannings = user_input.get("plannings") or []
+            groups = user_input.get("groups") or []
+            targets = [
+                (plid, gid)
+                for plid in plannings
+                for gid in groups
+                if (plid, gid) != (source_planning, source_group)
+            ]
+            used = {pid for slots in self._program().values() for _, pid in slots}
+            refused = []
+            for plid in plannings:
+                allowed = allowed_profiles(self.opts[CONF_PLANNINGS][plid], self.opts[CONF_PROFILES])
+                missing = sorted(used - set(allowed))
+                if missing:
+                    names = ", ".join(self.opts[CONF_PROFILES].get(pid, {}).get("name", pid) for pid in missing)
+                    refused.append(f"{self.opts[CONF_PLANNINGS][plid]['name']} ({names})")
+            if not targets:
+                errors["base"] = "copy_target_required"
+            elif refused:
+                errors["base"] = "copy_not_allowed"
+                placeholders["refused"] = " ; ".join(refused)
+            else:
+                week = copy.deepcopy(self._program())
+                for plid, gid in targets:
+                    programs = self.opts[CONF_PLANNINGS][plid].setdefault(CONF_PROGRAMS, {})
+                    programs[gid] = copy.deepcopy(week)
+                return await self.async_step_program_week()
+        defaults = user_input or {"plannings": [source_planning], "groups": []}
+        return self.async_show_form(
+            step_id="program_copy_groups",
+            data_schema=vol.Schema(
+                {
+                    vol.Optional("plannings", default=defaults.get("plannings", [])): _picker(
+                        self.opts[CONF_PLANNINGS], multiple=True, mode=SelectSelectorMode.LIST
+                    ),
+                    vol.Optional("groups", default=defaults.get("groups", [])): _picker(
+                        self.opts[CONF_GROUPS], multiple=True, mode=SelectSelectorMode.LIST
+                    ),
+                }
+            ),
+            errors=errors,
+            description_placeholders={"refused": "", **placeholders},
         )
 
     def _copy_day(self, source: int, days: list[str]) -> None:
