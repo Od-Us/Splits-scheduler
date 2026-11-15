@@ -157,8 +157,10 @@ création des entités ; ils se retrouvent dans la page de l'appareil.
   **+30min** du bandeau règlent une **durée à partir de maintenant** : un appui
   sur +30 prévoit le retour à la programmation dans 30 minutes, puis 1 h,
   1 h 30… (au plus 24 h) ; −30 la réduit, et revenir à zéro rend « jusqu'au
-  prochain créneau ». Le bandeau indique « Reste 1 h 30 » ou « Jusqu'au
-  prochain créneau ». La durée choisie l'emporte : un créneau passé pendant la dérogation est ignoré, et à l'heure de
+  prochain créneau ». Le bandeau affiche la durée à gauche des boutons
+  (« Durée : 1h30 », temps restant, ou « Durée : aucune ») et, en dessous,
+  « Jusqu'au prochain créneau (17:00) » ou « Reprise 11:05 · 10:30 Eco ignoré ·
+  ensuite Eco ». La durée choisie l'emporte : un créneau passé pendant la dérogation est ignoré, et à l'heure de
   reprise le profil prévu à ce moment est appliqué. L'heure de reprise survit à
   un redémarrage ; attributs `reprise`, `reprise_profil`, `creneau_ignore`,
   `derogation_depuis` sur le sélecteur de profil.

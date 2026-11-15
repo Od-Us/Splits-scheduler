@@ -22,7 +22,7 @@
  *       chart: [ambient, setpoint, outdoor]  # courbes du jour (au choix)
  */
 
-const CARD_VERSION = "1.14.0";
+const CARD_VERSION = "1.14.1";
 const ICON_URL = new URL("icon.png", import.meta.url).href;
 
 const GROUP_DEFAULTS = {
@@ -165,9 +165,14 @@ const I18N = {
     earlier: "Reprise 30 minutes plus tôt",
     later: "Reprise 30 minutes plus tard",
     skipped: "{t} {p} ignoré · ensuite {n}",
-    for_duration: "Reste {d}",
+    duration: "Durée :",
+    duration_none: "aucune",
+    until_slot_at: "Jusqu'au prochain créneau ({t})",
     until_slot: "Jusqu'au prochain créneau",
+    resume_at_t: "Reprise {t}",
     then: "Ensuite {n}",
+    then_lc: "ensuite {n}",
+    ignored: "ignoré",
     m_quiet_outdoor: "Unité extérieure silencieuse (si les splits l'ont)",
     quiet: "Ext. silencieux",
     quiet_long: "Unité extérieure silencieuse",
@@ -304,9 +309,14 @@ const I18N = {
     earlier: "Resume 30 minutes earlier",
     later: "Resume 30 minutes later",
     skipped: "{t} {p} skipped · then {n}",
-    for_duration: "{d} left",
+    duration: "Duration:",
+    duration_none: "none",
+    until_slot_at: "Until the next slot ({t})",
     until_slot: "Until the next slot",
+    resume_at_t: "Resumes {t}",
     then: "Then {n}",
+    then_lc: "then {n}",
+    ignored: "skipped",
     m_quiet_outdoor: "Quiet outdoor unit (if the splits have it)",
     quiet: "Quiet outdoor",
     quiet_long: "Quiet outdoor unit",
@@ -723,15 +733,20 @@ class SplitSchedulerCard extends HTMLElement {
       const gid = esc(g.group);
       const resume = pa.reprise;
       const skip = pa.creneau_ignore;
-      const after = skip
-        ? this._t("skipped").replace("{t}", this._time(skip.heure)).replace("{p}", skip.profil || "").replace("{n}", pa.reprise_profil || "")
-        : (pa.reprise_profil ? this._t("then").replace("{n}", pa.reprise_profil) : "");
-      const note = [this._durationLabel(pa.reprise_choisie, resume), after].filter(Boolean).join(" · ");
+      // Ligne du dessous : heure de reprise, créneau ignoré, profil repris
+      let note;
+      if (pa.reprise_choisie && resume) {
+        note = [
+          this._t("resume_at_t").replace("{t}", this._time(resume)),
+          skip ? `${this._time(skip.heure)} ${skip.profil || ""} ${this._t("ignored")}` : "",
+          pa.reprise_profil ? this._t("then_lc").replace("{n}", pa.reprise_profil) : "",
+        ].filter(Boolean).join(" · ");
+      } else note = resume ? this._t("until_slot_at").replace("{t}", this._time(resume)) : this._t("until_slot");
       banner += `<div class="banner warn compact">
         <div class="row">
-          <span class="when"><span class="small">${esc(this._t("resume_at"))}</span> <strong>${resume ? esc(this._time(resume)) : "–"}</strong></span>
-          ${resume ? `<button type="button" class="shift" data-action="shift" data-group="${gid}" data-value="-30" aria-label="${esc(this._t("earlier"))}">−30min</button>
-          <button type="button" class="shift" data-action="shift" data-group="${gid}" data-value="30" aria-label="${esc(this._t("later"))}">+30min</button>` : ""}
+          ${this._durationHtml(pa.reprise_choisie, resume)}
+          <button type="button" class="shift" data-action="shift" data-group="${gid}" data-value="-30" aria-label="${esc(this._t("earlier"))}">−30min</button>
+          <button type="button" class="shift" data-action="shift" data-group="${gid}" data-value="30" aria-label="${esc(this._t("later"))}">+30min</button>
           <button type="button" class="filled resume" data-action="resume" data-group="${gid}" aria-label="${esc(this._t("resume_now"))}" title="${esc(this._t("resume_now"))}">${svg(ICONS.resume, 20)}</button>
         </div>
         ${note ? `<span class="small note">${esc(note)}</span>` : ""}
@@ -832,27 +847,32 @@ class SplitSchedulerCard extends HTMLElement {
     const gid = esc(g.group);
     const eid = esc(o.entity_id);
     const diff = this._ecarts(o);
-    const follow = [this._durationLabel(o.reprise_choisie, o.reprise), others > 0 ? plural(this._t("others_follow"), others) : ""].filter(Boolean).join(" · ");
+    const when = o.reprise_choisie && o.reprise
+      ? this._t("resume_at_t").replace("{t}", this._time(o.reprise))
+      : (o.reprise ? this._t("until_slot_at").replace("{t}", this._time(o.reprise)) : this._t("until_slot"));
+    const follow = [when, others > 0 ? plural(this._t("others_follow"), others) : ""].filter(Boolean).join(" · ");
     return `<div class="banner warn compact">
         <div class="small head"><b class="who">${esc(this._splitName(o.entity_id))}</b>${diff ? ` · ${esc(diff)}` : ""}</div>
         <div class="row">
-          <span class="when"><span class="small">${esc(this._t("resume_at"))}</span> <strong>${o.reprise ? esc(this._time(o.reprise)) : "–"}</strong></span>
-          ${o.reprise ? `<button type="button" class="shift" data-action="shift" data-group="${gid}" data-entity="${eid}" data-value="-30" aria-label="${esc(this._t("earlier"))}">−30min</button>
-          <button type="button" class="shift" data-action="shift" data-group="${gid}" data-entity="${eid}" data-value="30" aria-label="${esc(this._t("later"))}">+30min</button>` : ""}
+          ${this._durationHtml(o.reprise_choisie, o.reprise)}
+          <button type="button" class="shift" data-action="shift" data-group="${gid}" data-entity="${eid}" data-value="-30" aria-label="${esc(this._t("earlier"))}">−30min</button>
+          <button type="button" class="shift" data-action="shift" data-group="${gid}" data-entity="${eid}" data-value="30" aria-label="${esc(this._t("later"))}">+30min</button>
           <button type="button" class="filled resume" data-action="split-resume" data-group="${gid}" data-value="${eid}" aria-label="${esc(this._t("split_resume"))}" title="${esc(this._t("split_resume"))}">${svg(ICONS.resume, 20)}</button>
         </div>
         ${follow ? `<span class="small note">${esc(follow)}</span>` : ""}
       </div>`;
   }
 
-  /** « Durée 1 h 30 » (choisie avec −30 / +30) ou « Jusqu'au prochain créneau ». */
-  _durationLabel(chosen, resume) {
-    if (!chosen || !resume) return this._t("until_slot");
-    const minutes = Math.max(0, Math.round((new Date(resume).getTime() - Date.now()) / 60000));
-    const h = Math.floor(minutes / 60);
-    const m = minutes % 60;
-    const d = h ? `${h} h${m ? ` ${String(m).padStart(2, "0")}` : ""}` : `${m} min`;
-    return this._t("for_duration").replace("{d}", d);
+  /** « Durée : 1h30 » (temps restant de la durée choisie avec −30 / +30) ou « Durée : aucune ». */
+  _durationHtml(chosen, resume) {
+    let value = this._t("duration_none");
+    if (chosen && resume) {
+      const minutes = Math.max(1, Math.ceil((new Date(resume).getTime() - Date.now()) / 60000));
+      const h = Math.floor(minutes / 60);
+      const m = minutes % 60;
+      value = h ? `${h}h${m ? String(m).padStart(2, "0") : ""}` : `${m}min`;
+    }
+    return `<span class="when"><span class="small">${esc(this._t("duration"))}</span> <strong>${esc(value)}</strong></span>`;
   }
 
   _openSplit(g, entityId) {
