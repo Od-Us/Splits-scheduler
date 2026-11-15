@@ -22,7 +22,7 @@
  *       chart: [ambient, setpoint, outdoor]  # courbes du jour (au choix)
  */
 
-const CARD_VERSION = "1.14.1";
+const CARD_VERSION = "1.14.2";
 const ICON_URL = new URL("icon.png", import.meta.url).href;
 
 const GROUP_DEFAULTS = {
@@ -1167,6 +1167,9 @@ class SplitSchedulerCard extends HTMLElement {
       if (manual.includes("fan_mode") && (a.fan_modes || []).length) {
         rows.push(this._selectRow(`fan-${g.group}`, this._t("fan"), "fan_mode", g.group, a.fan_modes, a.fan_mode));
       }
+      if (manual.includes("swing_mode") && (a.swing_modes || []).length) {
+        rows.push(`<div class="row between"><span>${esc(this._t("swing"))}</span>${this._segmented(a.swing_modes, a.swing_mode, "swing_mode", g.group)}</div>`);
+      }
       const quiet = manual.includes("quiet_outdoor") ? this._quietState(g) : null;
       if (quiet) {
         const note = !quiet.available ? this._t("quiet_unavailable") : quiet.pending ? this._t("quiet_wait") : "";
@@ -1174,9 +1177,6 @@ class SplitSchedulerCard extends HTMLElement {
         rows.push(`<div class="col gap4"><div class="row between"><span>🤫 ${esc(this._t("quiet_long"))}${note ? ` <span class="muted small">· ${esc(note)}</span>` : ""}</span>
           <button type="button" role="switch" class="switch ${quiet.on ? "on" : ""} ${quiet.pending ? "pending" : ""}" aria-checked="${quiet.on}" aria-label="${esc(this._t("quiet_long"))}" data-action="quiet" data-group="${gid}" ${quiet.available ? "" : "disabled"}><i></i></button></div>
           ${msg ? `<span class="small err" role="alert">${esc(msg)}</span>` : ""}</div>`);
-      }
-      if (manual.includes("swing_mode") && (a.swing_modes || []).length) {
-        rows.push(`<div class="row between"><span>${esc(this._t("swing"))}</span>${this._segmented(a.swing_modes, a.swing_mode, "swing_mode", g.group)}</div>`);
       }
       if (rows.length) {
         const who = n > 1 ? ` <span class="muted">(${esc(this._t("manual_all"))})</span>` : "";
