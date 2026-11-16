@@ -267,7 +267,7 @@ Programmation des splits*. Tout se règle dans son éditeur visuel :
     le nouvel état puis celui des splits, et signale un split qui ne répond pas ;
   - **frise du compresseur** (facultative) : sous la frise des profils, une
     bande fine montre les périodes de marche du compresseur aujourd'hui,
-    **colorées selon sa vitesse** (bleu : faible, vert, jaune, rouge : élevée),
+    **colorées selon sa vitesse** (du blanc, vitesse faible, au bleu foncé),
     et un trait à chaque démarrage, avec leur nombre en légende ;
   - **courbes du jour** (facultatives) : consigne, ambiance et/ou température
     extérieure, de 0 h à 24 h sur le même axe que les frises (120 px de haut
@@ -435,10 +435,10 @@ Le capteur `sensor.<groupe>_charge_du_compresseur` donne la fréquence actuelle 
 `frequence_max`, `source_max` (`saisie` ou `observee_30j`) et `unite`.
 
 Sur la carte, l'option **Fréquence actuelle et charge** affiche « Compresseur
-26 Hz · 35 % » (avec une pastille de la couleur de la vitesse). La frise du
+26 Hz · 35 % ». La frise du
 compresseur est colorée selon la vitesse, et la vue détaillée ajoute sous les
-courbes un graphique **Charge du compresseur** (0 à 100 %, dégradé du bleu au
-rouge), masquable, et la charge dans l'infobulle. En multi-split, c'est la
+courbes une courbe continue **Charge du compresseur** (0 à 100 %, remplissage
+du blanc au bleu foncé), masquable, et la charge dans l'infobulle. En multi-split, c'est la
 charge de l'unité extérieure commune.
 
 ## Splits Faikout (MQTT)

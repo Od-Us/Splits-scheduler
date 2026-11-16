@@ -22,7 +22,7 @@
  *       chart: [ambient, setpoint, outdoor]  # courbes du jour (au choix)
  */
 
-const CARD_VERSION = "1.15.0";
+const CARD_VERSION = "1.15.1";
 const ICON_URL = new URL("icon.png", import.meta.url).href;
 
 const GROUP_DEFAULTS = {
@@ -907,8 +907,7 @@ class SplitSchedulerCard extends HTMLElement {
         const max = load?.attributes?.frequence_max;
         const value = `${this._fmt(n, 0)} ${unit}${Number.isFinite(pct) ? ` · ${pct} %` : ""}`;
         const title = max ? this._t(load.attributes.source_max === "saisie" ? "c_max_set" : "c_max_seen").replace("{m}", `${this._fmt(max, 0)} ${unit}`) : this._t("c_max_none");
-        const dot = n > 0 ? `<i class="sdot" style="background:${speedColor(n, Number(max) || n)}"></i>` : "";
-        chips.push(`<span class="chip" title="${esc(title)}">${svg(ICONS.wave, 16)}${esc(this._t("t_compressor"))} ${dot}<strong>${esc(value)}</strong></span>`);
+        chips.push(`<span class="chip" title="${esc(title)}">${svg(ICONS.wave, 16)}${esc(this._t("t_compressor"))} <strong>${esc(value)}</strong></span>`);
       }
     }
     for (const [key, entity] of [["avg_24h", e.starts_24h], ["avg_profile", e.starts_profile]]) {
@@ -1448,11 +1447,12 @@ function valueAt(series, t) {
   return found;
 }
 
-/** Couleur d'une vitesse de compresseur : bleu (faible) → rouge (élevée), en passant par le vert et le jaune. */
+/** Couleur d'une vitesse de compresseur : blanc bleuté (faible) → bleu foncé (élevée). */
 function speedColor(value, max) {
   const p = max > 0 ? Math.min(Math.max(value / max, 0), 1) : 0.5;
-  return `hsl(${Math.round(210 * (1 - p))} 85% 50%)`;
+  return `hsl(${Math.round(205 + 15 * p)}, ${Math.round(70 + 15 * p)}%, ${Math.round(94 - 70 * p)}%)`;
 }
+const SPEED_GRADIENT = "linear-gradient(90deg, hsl(205, 70%, 94%), hsl(220, 85%, 24%))";
 
 /** Plages de marche du compresseur avec leur vitesse : [[début, fin, valeur], ...]. */
 function speedSegments(points, until) {
@@ -1753,25 +1753,29 @@ class SplitSchedulerHistory extends HTMLElement {
       const ly = (p) => (LH - (p / 100) * LH).toFixed(1);
       let path = "";
       let prev = null;
+      let firstX = null;
+      let lastX = null;
       for (const [t, v] of [...d.comp, [last, d.comp.at(-1)?.[1] ?? null]]) {
-        if (v === null || v === undefined) { prev = null; continue; }
+        if (v === null || v === undefined) continue;
         const p = Math.min(100, Math.max(0, (v / cmax) * 100));
         const x = (pct(t) * 10).toFixed(1);
-        path += prev === null ? `M${x} ${LH}V${ly(p)}` : `H${x}V${ly(p)}`;
+        path += prev === null ? `M${x} ${ly(p)}` : `L${x} ${ly(p)}`;
+        if (firstX === null) firstX = x;
+        lastX = x;
         prev = p;
       }
-      const xEnd = (pct(last) * 10).toFixed(1);
-      const area = path ? `${path}H${xEnd}V${LH}Z` : "";
+      const area = path ? `${path}L${lastX} ${LH}L${firstX} ${LH}Z` : "";
       loadPlot = `
         <div class="chartwrap load">
           <div class="ylabels"><span style="top:0%">100 %</span><span style="top:50%">50 %</span><span style="top:100%">0 %</span></div>
           <div class="lplot" style="height:${LH}px" title="${esc(cknown ? "" : this._t("c_max_none"))}">
             <svg viewBox="0 0 1000 ${LH}" preserveAspectRatio="none" aria-hidden="true">
               <defs><linearGradient id="lg-load" gradientUnits="userSpaceOnUse" x1="0" x2="0" y1="${LH}" y2="0">
-                <stop offset="0" stop-color="hsl(210,85%,50%)"/><stop offset=".33" stop-color="hsl(120,85%,50%)"/><stop offset=".66" stop-color="hsl(55,85%,50%)"/><stop offset="1" stop-color="hsl(0,85%,50%)"/>
+                <stop offset="0" stop-color="hsl(205,70%,94%)"/><stop offset="1" stop-color="hsl(220,85%,24%)"/>
               </linearGradient></defs>
               <line class="grid" x1="0" x2="1000" y1="${ly(50)}" y2="${ly(50)}"></line>
               <path class="load" d="${area}"></path>
+              <path class="loadline" d="${path}"></path>
             </svg>
           </div>
         </div>`;
@@ -1938,9 +1942,10 @@ const HISTORY_CSS = `
   .pband { position: relative; height: 22px; border-radius: 6px; background: ${mix("var(--primary-text-color)", 6)}; overflow: hidden; }
   .pband span { position: absolute; top: 0; bottom: 0; }
   .cband { position: relative; height: 14px; border-radius: 5px; background: ${mix("var(--primary-text-color)", 7)}; overflow: hidden; }
-  .lg.run { height: 8px; width: 22px; border: 0; border-radius: 2px; background: linear-gradient(90deg, hsl(210 85% 50%), hsl(120 85% 50%), hsl(55 85% 50%), hsl(0 85% 50%)); }
+  .lg.run { height: 8px; width: 22px; border: 0; border-radius: 2px; background: ${SPEED_GRADIENT}; box-shadow: inset 0 0 0 1px rgba(13, 71, 161, .25); }
   .lplot { position: relative; }
-  path.load { fill: url(#lg-load); opacity: .85; stroke: none; }
+  path.load { fill: url(#lg-load); opacity: .55; stroke: none; }
+  path.loadline { fill: none; stroke: hsl(220, 85%, 30%); stroke-width: 1.8; }
   .lplot svg { display: block; width: 100%; height: 100%; overflow: visible; }
   .chartwrap.load { margin-top: 14px; }
   .chartwrap.load .ylabels span { font-size: 10.5px; }
@@ -2046,8 +2051,8 @@ const CARD_CSS = `
   .cbar { position: relative; height: 8px; border-radius: 4px; background: ${mix("var(--primary-text-color)", 7)}; overflow: hidden; }
   .cbar i { position: absolute; top: 0; bottom: 0; background: ${mix("var(--primary-color)", 45)}; }
   .cbar u { z-index: 1; }
-  .sdot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 2px; }
-  .cbar u { position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: var(--primary-color); }
+  .cbar i, .cband i { box-shadow: inset 0 0 0 1px rgba(13, 71, 161, .18); }
+  .cbar u { position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: var(--primary-text-color); opacity: .75; }
   .cbar b { position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: var(--primary-text-color); }
   .chart { position: relative; }
   .chart svg { display: block; width: 100%; height: 100%; overflow: visible; }
@@ -2111,7 +2116,7 @@ const CARD_CSS = `
   .adapted { display: inline-flex; align-items: center; gap: 5px; height: 24px; margin-bottom: 4px; padding: 0 9px; border-radius: 12px; font-size: 12px; font-weight: 500; background: ${mix("var(--info-color, #039be5)", 16)}; color: ${mix("var(--info-color, #039be5)", 70, "var(--primary-text-color)")}; }
   .banner.info { background: ${mix("var(--info-color, #039be5)", 13)}; }
   .banner.info svg { flex-shrink: 0; color: ${mix("var(--info-color, #039be5)", 80, "var(--primary-text-color)")}; }
-  .lg.run { height: 8px; width: 22px; border: 0; border-radius: 2px; background: linear-gradient(90deg, hsl(210 85% 50%), hsl(120 85% 50%), hsl(55 85% 50%), hsl(0 85% 50%)); }
+  .lg.run { height: 8px; width: 22px; border: 0; border-radius: 2px; background: ${SPEED_GRADIENT}; box-shadow: inset 0 0 0 1px rgba(13, 71, 161, .25); }
   button { font: inherit; cursor: pointer; color: inherit; }
   .expander { display: flex; align-items: center; justify-content: center; gap: 6px; min-height: 44px; border: 0; border-top: 1px solid var(--divider-color); background: none; color: var(--primary-color); font-weight: 500; margin: 0 -4px -6px; }
   .edit { display: flex; flex-direction: column; gap: 16px; padding: 12px; border-radius: 12px; background: var(--secondary-background-color, #f7f8fa); }
