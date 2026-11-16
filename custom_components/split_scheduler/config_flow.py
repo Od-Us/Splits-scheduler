@@ -41,6 +41,7 @@ from .const import (
     CONF_CLIMATES,
     CONF_ALLOWED,
     CONF_COMPRESSOR,
+    CONF_COMPRESSOR_MAX,
     CONF_ALWAYS_QUIET,
     CONF_OUTDOOR,
     CONF_SEND_NORMAL,
@@ -230,6 +231,8 @@ class SplitSchedulerOptionsFlow(OptionsFlow):
                 compressor = user_input.get(CONF_COMPRESSOR) or self._detect_compressor(climates)
                 if compressor:
                     group[CONF_COMPRESSOR] = compressor
+                if user_input.get(CONF_COMPRESSOR_MAX):
+                    group[CONF_COMPRESSOR_MAX] = float(user_input[CONF_COMPRESSOR_MAX])
                 # la position est renumérotée à l'enregistrement
                 self.opts[CONF_GROUPS][group_id or _new_id()] = group
                 return await self.async_step_groups()
@@ -241,10 +244,14 @@ class SplitSchedulerOptionsFlow(OptionsFlow):
                     EntitySelectorConfig(domain="climate", multiple=True)
                 ),
                 vol.Optional(CONF_COMPRESSOR): EntitySelector(EntitySelectorConfig(domain="sensor")),
+                vol.Optional(CONF_COMPRESSOR_MAX): NumberSelector(
+                    NumberSelectorConfig(min=1, max=15000, step=1, mode=NumberSelectorMode.BOX)
+                ),
             }
         )
         schema = self.add_suggested_values_to_schema(
-            schema, {CONF_COMPRESSOR: values.get(CONF_COMPRESSOR)}
+            schema,
+            {CONF_COMPRESSOR: values.get(CONF_COMPRESSOR), CONF_COMPRESSOR_MAX: values.get(CONF_COMPRESSOR_MAX)},
         )
         return self.async_show_form(step_id=step_id, data_schema=schema, errors=errors)
 

@@ -266,8 +266,9 @@ Programmation des splits*. Tout se règle dans son éditeur visuel :
     l'interrupteur Faikout ; un appui ne vaut pas dérogation, affiche aussitôt
     le nouvel état puis celui des splits, et signale un split qui ne répond pas ;
   - **frise du compresseur** (facultative) : sous la frise des profils, une
-    bande fine montre les périodes de marche du compresseur aujourd'hui et un
-    trait à chaque démarrage, avec leur nombre en légende ;
+    bande fine montre les périodes de marche du compresseur aujourd'hui,
+    **colorées selon sa vitesse** (bleu : faible, vert, jaune, rouge : élevée),
+    et un trait à chaque démarrage, avec leur nombre en légende ;
   - **courbes du jour** (facultatives) : consigne, ambiance et/ou température
     extérieure, de 0 h à 24 h sur le même axe que les frises (120 px de haut
     pour un groupe de plusieurs splits, 60 px sinon). En **trait plein** : la
@@ -416,6 +417,29 @@ Sur la carte, l'option **Démarrages du compresseur par heure** de chaque groupe
 affiche l'une ou l'autre moyenne, ou les deux, sous l'état (comme les capteurs
 supplémentaires) : « Compresseur (24 h) 2,3 dém./h », « Compresseur depuis
 Confort 1,5 dém./h ».
+
+### Charge du compresseur (%)
+
+Dans la configuration d'un groupe, **Fréquence maximale du compresseur**
+(facultatif) se saisit **dans l'unité du capteur** : Hz ou tours/min selon le
+réglage de Faikout (`ha.comprpm`), d'après le manuel de service de l'unité
+extérieure. Laissée vide, elle est **observée** : à partir des maxima horaires des
+30 derniers jours (statistiques de l'enregistreur, sinon historique détaillé),
+les valeurs nulles ou impossibles (plus de 250 Hz ou 15 000 tr/min) sont
+écartées, puis la **3e plus forte heure** est retenue, pour qu'un pic isolé ne
+fausse pas la référence. Recalculée toutes les 6 heures ; inconnue tant qu'il
+n'y a pas 3 heures de marche.
+
+Le capteur `sensor.<groupe>_charge_du_compresseur` donne la fréquence actuelle en
+% de ce maximum (borné à 100 %), avec les attributs `frequence`,
+`frequence_max`, `source_max` (`saisie` ou `observee_30j`) et `unite`.
+
+Sur la carte, l'option **Fréquence actuelle et charge** affiche « Compresseur
+26 Hz · 35 % » (avec une pastille de la couleur de la vitesse). La frise du
+compresseur est colorée selon la vitesse, et la vue détaillée ajoute sous les
+courbes un graphique **Charge du compresseur** (0 à 100 %, dégradé du bleu au
+rouge), masquable, et la charge dans l'infobulle. En multi-split, c'est la
+charge de l'unité extérieure commune.
 
 ## Splits Faikout (MQTT)
 

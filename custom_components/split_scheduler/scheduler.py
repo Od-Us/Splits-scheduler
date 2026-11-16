@@ -32,6 +32,7 @@ from .const import (
     ATTR_TEMPERATURE,
     CONF_CLIMATES,
     CONF_COMPRESSOR,
+    CONF_COMPRESSOR_MAX,
     CONF_ALWAYS_QUIET,
     CONF_OUTDOOR,
     CONF_SEND_NORMAL,
@@ -60,6 +61,7 @@ from .outdoor import (
     adapt_target,
     round_half,
 )
+from .compressor import robust_maximum
 from .features import quiet_switch
 from .planning import Program, current_occurrence, next_occurrence
 
@@ -171,6 +173,8 @@ class SplitScheduler:
         self.always_quiet: bool = bool(options.get(CONF_SETTINGS, {}).get(CONF_ALWAYS_QUIET))
         # Interrupteur « unité extérieure silencieuse » de chaque split (Faikout)
         self.quiet_switches: dict[str, str] = {}
+        # Fréquence maximale du compresseur par groupe : {valeur, source, unite}
+        self.compressor_max: dict[str, dict[str, Any]] = {}
         self.outdoor = OutdoorAverage()
         self._unsubs: list[CALLBACK_TYPE] = []
 
@@ -241,6 +245,12 @@ class SplitScheduler:
             self._unsubs.append(
                 async_track_state_change_event(
                     self.hass, list(compressors), self._on_compressor_change
+                )
+            )
+            await self._async_update_compressor_max()
+            self._unsubs.append(
+                async_track_time_interval(
+                    self.hass, self._async_update_compressor_max, timedelta(hours=6)
                 )
             )
         if self.outdoor_entity is None:
@@ -461,6 +471,83 @@ class SplitScheduler:
                 if log.feed(new.last_changed, new.state):
                     _LOGGER.debug("Groupe « %s » : démarrage du compresseur", group["name"])
                     self._changed()
+        self._notify()  # charge du compresseur (%) à jour
+
+    async def _async_update_compressor_max(self, _now: datetime | None = None) -> None:
+        """Fréquence maximale de chaque compresseur : saisie, sinon observée sur 30 jours."""
+        for gid, group in self.groups.items():
+            entity_id = group.get(CONF_COMPRESSOR)
+            if not entity_id:
+                continue
+            current = self.hass.states.get(entity_id)
+            unit = current.attributes.get("unit_of_measurement") if current else None
+            if group.get(CONF_COMPRESSOR_MAX):
+                self.compressor_max[gid] = {
+                    "valeur": float(group[CONF_COMPRESSOR_MAX]), "source": "saisie", "unite": unit,
+                }
+                continue
+            maxima = await self._async_hourly_maxima(entity_id)
+            value = robust_maximum(maxima, unit)
+            self.compressor_max[gid] = {
+                "valeur": value, "source": "observee_30j" if value is not None else None, "unite": unit,
+            }
+        self._notify()
+
+    async def _async_hourly_maxima(self, entity_id: str) -> list[float]:
+        """Maxima horaires des 30 derniers jours : statistiques de l'enregistreur, sinon
+        historique détaillé (10 jours par défaut) regroupé par heure."""
+        if "recorder" not in self.hass.config.components:
+            return []
+        from homeassistant.components.recorder import history, statistics
+        from homeassistant.helpers.recorder import get_instance
+
+        now = dt_util.utcnow()
+        start = now - timedelta(days=30)
+        try:
+            stats = await get_instance(self.hass).async_add_executor_job(
+                statistics.statistics_during_period,
+                self.hass, start, now, {entity_id}, "hour", None, {"max"},
+            )
+            maxima = [row["max"] for row in stats.get(entity_id, []) if row.get("max") is not None]
+            if maxima:
+                return [float(v) for v in maxima]
+            changes = await get_instance(self.hass).async_add_executor_job(
+                history.state_changes_during_period, self.hass, start, now, entity_id, True
+            )
+        except Exception as err:  # noqa: BLE001 - l'historique est un plus, pas un besoin
+            _LOGGER.debug("Historique du compresseur indisponible : %s", err)
+            return []
+        hours: dict[datetime, float] = {}
+        for past in changes.get(entity_id, []):
+            try:
+                value = float(past.state)
+            except ValueError:
+                continue
+            hour = past.last_changed.replace(minute=0, second=0, microsecond=0)
+            hours[hour] = max(hours.get(hour, 0.0), value)
+        return list(hours.values())
+
+    def compressor_load(self, gid: str) -> tuple[float | None, dict[str, Any]]:
+        """Charge du compresseur en % de sa fréquence maximale (bornée à 100)."""
+        info = self.compressor_max.get(gid, {})
+        entity_id = self.groups[gid].get(CONF_COMPRESSOR)
+        current = self.hass.states.get(entity_id) if entity_id else None
+        attrs = {
+            "frequence": None,
+            "frequence_max": info.get("valeur"),
+            "source_max": info.get("source"),
+            "unite": (current.attributes.get("unit_of_measurement") if current else None)
+            or info.get("unite"),
+        }
+        try:
+            value = float(current.state) if current else None
+        except ValueError:
+            value = None
+        attrs["frequence"] = value
+        maximum = info.get("valeur")
+        if value is None or not maximum:
+            return None, attrs
+        return round(min(100.0, max(0.0, value / maximum * 100))), attrs
 
     async def _async_backfill_compressor(self, gid: str) -> None:
         """Reconstitue les démarrages depuis l'historique (si l'enregistreur est actif)."""

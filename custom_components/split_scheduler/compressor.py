@@ -79,3 +79,21 @@ class StartLog:
         since = parse(data.get("since"))
         starts = sorted(d for d in (parse(s) for s in data.get("starts", [])) if d)
         return cls(since=since, starts=starts) if since else None  # type: ignore[return-value]
+
+
+# Valeurs physiquement impossibles (capteur en Hz ou en tours/min) : écartées
+PLAUSIBLE_MAX = {"Hz": 250.0, "rpm": 15000.0}
+
+
+def robust_maximum(hourly_maxima: list[float], unit: str | None) -> float | None:
+    """Maximum observé, à l'abri des valeurs aberrantes.
+
+    On part des maxima horaires (30 jours) ; les valeurs nulles ou impossibles sont
+    écartées, puis on retient la **3e plus forte heure** : un pic isolé (une ou deux
+    heures) ne fausse pas la référence. Moins de 3 heures de marche : pas de valeur.
+    """
+    limit = PLAUSIBLE_MAX.get(unit or "", PLAUSIBLE_MAX["rpm"])
+    values = sorted((v for v in hourly_maxima if v is not None and 0 < v <= limit), reverse=True)
+    if len(values) < 3:
+        return None
+    return round(values[2], 1)

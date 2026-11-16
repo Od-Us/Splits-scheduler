@@ -33,6 +33,7 @@ async def async_setup_entry(
             entities += [
                 CompressorStartsSensor(scheduler, gid, "compressor_starts_24h", 0),
                 CompressorStartsSensor(scheduler, gid, "compressor_starts_profile", 1),
+                CompressorLoadSensor(scheduler, gid),
             ]
     async_add_entities(entities)
 
@@ -84,6 +85,25 @@ class TargetSensor(GroupEntity, SensorEntity):
     @property
     def native_value(self) -> float | None:
         return self.scheduler.group_target(self.group_id)
+
+
+class CompressorLoadSensor(GroupEntity, SensorEntity):
+    """Charge du compresseur : fréquence actuelle en % de la fréquence maximale."""
+
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_native_unit_of_measurement = "%"
+    _attr_icon = "mdi:gauge"
+
+    def __init__(self, scheduler: SplitScheduler, group_id: str) -> None:
+        super().__init__(scheduler, group_id, "compressor_load")
+
+    @property
+    def native_value(self) -> float | None:
+        return self.scheduler.compressor_load(self.group_id)[0]
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        return self.scheduler.compressor_load(self.group_id)[1]
 
 
 class CompressorStartsSensor(GroupEntity, SensorEntity):

@@ -38,6 +38,7 @@ _GROUP_ENTITIES = {
     "target": ("sensor", "target"),
     "starts_24h": ("sensor", "compressor_starts_24h"),
     "starts_profile": ("sensor", "compressor_starts_profile"),
+    "compressor_load": ("sensor", "compressor_load"),
 }
 
 

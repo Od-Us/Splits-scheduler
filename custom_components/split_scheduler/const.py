@@ -25,6 +25,8 @@ CONF_PROGRAMS = "programs"
 CONF_COMPRESSOR = "compressor"
 CONF_SETTINGS = "settings"
 CONF_OUTDOOR = "outdoor_sensor"
+# Fréquence maximale du compresseur (unité du capteur : Hz ou rpm), saisie par groupe
+CONF_COMPRESSOR_MAX = "compressor_max"
 # Réglages généraux pour les systèmes multi-split : envoyés avec chaque commande à un split
 CONF_SEND_NORMAL = "send_normal_preset"   # préréglage Normal (home), coupe ECONO / Powerful
 CONF_ALWAYS_QUIET = "always_quiet"        # unité extérieure silencieuse activée

@@ -22,7 +22,7 @@
  *       chart: [ambient, setpoint, outdoor]  # courbes du jour (au choix)
  */
 
-const CARD_VERSION = "1.14.2";
+const CARD_VERSION = "1.15.0";
 const ICON_URL = new URL("icon.png", import.meta.url).href;
 
 const GROUP_DEFAULTS = {
@@ -107,6 +107,11 @@ const I18N = {
     e_compressor_ok: "Tous les splits du groupe sont considérés comme reliés au même compresseur.",
     o_avg_24h: "Moyenne sur les 24 dernières heures",
     o_avg_profile: "Moyenne depuis le dernier changement de profil",
+    o_load: "Fréquence actuelle et charge (% de la fréquence maximale)",
+    c_max_set: "Fréquence maximale saisie : {m}",
+    c_max_seen: "Fréquence maximale observée sur 30 jours : {m}",
+    c_max_none: "Fréquence maximale inconnue : à saisir dans le groupe, ou en attente de 30 jours d'historique",
+    t_load: "Charge du compresseur",
     t_compressor: "Compresseur",
     t_starts: "{n} démarrage|{n} démarrages",
     t_running: "En marche",
@@ -251,6 +256,11 @@ const I18N = {
     e_compressor_ok: "All splits of the group are assumed to share the same compressor.",
     o_avg_24h: "Average over the last 24 hours",
     o_avg_profile: "Average since the last profile change",
+    o_load: "Current frequency and load (% of maximum frequency)",
+    c_max_set: "Maximum frequency entered: {m}",
+    c_max_seen: "Maximum frequency observed over 30 days: {m}",
+    c_max_none: "Maximum frequency unknown: enter it in the group, or wait for 30 days of history",
+    t_load: "Compressor load",
     t_compressor: "Compressor",
     t_starts: "{n} start|{n} starts",
     t_running: "Running",
@@ -887,6 +897,20 @@ class SplitSchedulerCard extends HTMLElement {
     const wanted = g.compressor || [];
     const e = g.info.entities;
     const chips = [];
+    if (wanted.includes("load")) {
+      const comp = this._state(g.info.compressor);
+      const n = Number(comp?.state);
+      if (comp && Number.isFinite(n)) {
+        const unit = comp.attributes.unit_of_measurement || "Hz";
+        const load = this._state(e.compressor_load);
+        const pct = Number(load?.state);
+        const max = load?.attributes?.frequence_max;
+        const value = `${this._fmt(n, 0)} ${unit}${Number.isFinite(pct) ? ` · ${pct} %` : ""}`;
+        const title = max ? this._t(load.attributes.source_max === "saisie" ? "c_max_set" : "c_max_seen").replace("{m}", `${this._fmt(max, 0)} ${unit}`) : this._t("c_max_none");
+        const dot = n > 0 ? `<i class="sdot" style="background:${speedColor(n, Number(max) || n)}"></i>` : "";
+        chips.push(`<span class="chip" title="${esc(title)}">${svg(ICONS.wave, 16)}${esc(this._t("t_compressor"))} ${dot}<strong>${esc(value)}</strong></span>`);
+      }
+    }
     for (const [key, entity] of [["avg_24h", e.starts_24h], ["avg_profile", e.starts_profile]]) {
       const s = wanted.includes(key) ? this._state(entity) : undefined;
       if (!s) continue;
@@ -952,8 +976,18 @@ class SplitSchedulerCard extends HTMLElement {
     const history = this._history[g.group];
     const legend = [];
     if (showCompressor) {
-      const { runs, starts } = this._compressorRuns(history);
-      const blocks = runs.map(([a, b]) => `<i style="left:${a.toFixed(3)}%;width:${Math.max(b - a, 0.15).toFixed(3)}%"></i>`).join("");
+      const { starts } = this._compressorRuns(history);
+      const num = (v) => (v === undefined || v === null || v === "" || Number.isNaN(Number(v)) ? null : Number(v));
+      const pts = (history?.comp || []).map(([t, v]) => [t, num(v)]);
+      const live = this._state(history?.compEntity);
+      if (live) pts.push([Date.now(), num(live.state)]);
+      const { max } = compressorMax(this._hass, g, pts);
+      const unit = live?.attributes?.unit_of_measurement || "Hz";
+      const blocks = speedSegments(pts, Date.now()).map(([a, b, v]) => {
+        const x = this._pct(a, history);
+        const w = Math.max(this._pct(b, history) - x, 0.15);
+        return `<i style="left:${x.toFixed(3)}%;width:${w.toFixed(3)}%;background:${speedColor(v, max)}" title="${this._fmt(v, 0)} ${esc(unit)}"></i>`;
+      }).join("");
       const ticks = starts.map((x) => `<u style="left:${x.toFixed(3)}%"></u>`).join("");
       rows.push(`<div class="cbar" title="${esc(this._t("t_compressor"))}">${blocks}${ticks}<b style="left:${nowPct}%"></b></div>`);
       legend.push(`<span><i class="lg run"></i>${esc(this._t("t_compressor"))} · ${esc(plural(this._t("t_starts"), starts.length))}</span>`);
@@ -1414,6 +1448,32 @@ function valueAt(series, t) {
   return found;
 }
 
+/** Couleur d'une vitesse de compresseur : bleu (faible) → rouge (élevée), en passant par le vert et le jaune. */
+function speedColor(value, max) {
+  const p = max > 0 ? Math.min(Math.max(value / max, 0), 1) : 0.5;
+  return `hsl(${Math.round(210 * (1 - p))} 85% 50%)`;
+}
+
+/** Plages de marche du compresseur avec leur vitesse : [[début, fin, valeur], ...]. */
+function speedSegments(points, until) {
+  const out = [];
+  for (let i = 0; i < points.length; i++) {
+    const [t, v] = points[i];
+    const next = i + 1 < points.length ? points[i + 1][0] : until;
+    if (v !== null && v !== undefined && v > 0 && next > t) out.push([t, next, v]);
+  }
+  return out;
+}
+
+/** Fréquence maximale (capteur « Charge du compresseur »), sinon le maximum des points affichés. */
+function compressorMax(hass, g, points) {
+  const load = hass.states[g.info.entities?.compressor_load];
+  const max = Number(load?.attributes?.frequence_max);
+  if (Number.isFinite(max) && max > 0) return { max, known: true };
+  const seen = Math.max(0, ...points.map(([, v]) => Number(v) || 0));
+  return { max: seen || 1, known: false };
+}
+
 /** Écart toléré entre la consigne d'un split et celle du groupe (comme l'intégration). */
 const TOLERANCE = 0.3;
 
@@ -1502,7 +1562,7 @@ class SplitSchedulerHistory extends HTMLElement {
     this.attachShadow({ mode: "open" });
     this._period = "day";
     this._offset = 0;
-    this._show = { ambient: true, setpoint: true, outdoor: true, dashed: true };
+    this._show = { ambient: true, setpoint: true, outdoor: true, dashed: true, load: true };
     this._data = null;
     this._cursor = null;
     this._onKey = (ev) => { if (ev.key === "Escape") this.close(); };
@@ -1629,7 +1689,8 @@ class SplitSchedulerHistory extends HTMLElement {
     const periods = Object.keys(PERIODS).map((p) => `<button type="button" class="${p === this._period ? "on" : ""}" aria-pressed="${p === this._period}" data-act="period" data-value="${p}">${esc(this._t(`p_${p}`))}</button>`).join("");
     const multi = g.info.climates.length > 1;
     const toggles = [["setpoint", "set", this._t(multi ? "t_setpoint_group" : "t_setpoint")], ["ambient", "amb", this._t(multi ? "t_ambient_mean" : "t_ambient")],
-      ...(d?.dashed?.length ? [["dashed", "set dash", this._t("t_dashed")]] : []), ...(this._info.outdoor ? [["outdoor", "out", this._t("t_outdoor")]] : [])]
+      ...(d?.dashed?.length ? [["dashed", "set dash", this._t("t_dashed")]] : []), ...(this._info.outdoor ? [["outdoor", "out", this._t("t_outdoor")]] : []),
+      ...(g.info.compressor ? [["load", "run", this._t("t_load")]] : [])]
       .map(([k, cls, label]) => `<button type="button" class="tog ${this._show[k] ? "on" : ""}" aria-pressed="${this._show[k]}" data-act="toggle" data-value="${k}"><i class="lg ${cls}"></i>${esc(label)}</button>`).join("");
     const since = d && Number.isFinite(d.first) && d.first > start + 60000
       ? `<span class="muted small">${esc(this._t("available_since").replace("{d}", date(d.first, { day: "numeric", month: "long" })))}</span>` : "";
@@ -1682,7 +1743,39 @@ class SplitSchedulerHistory extends HTMLElement {
     if (on !== null) runs.push([on, last]);
     const observedFrom = Number.isFinite(d.first) ? Math.max(start, d.first) : start;
     const hours = Math.max((last - observedFrom) / 3600000, 1 / 60);
-    const compBlocks = runs.map(([a, b]) => `<i style="left:${pct(a).toFixed(3)}%;width:${Math.max(pct(b) - pct(a), 0.12).toFixed(3)}%"></i>`).join("");
+    const { max: cmax, known: cknown } = compressorMax(this._hass, this._g, d.comp);
+    const cunit = this._hass.states[this._g.info.compressor]?.attributes?.unit_of_measurement || "Hz";
+    const compBlocks = speedSegments(d.comp, last).map(([a, b, v]) => `<i style="left:${pct(a).toFixed(3)}%;width:${Math.max(pct(b) - pct(a), 0.12).toFixed(3)}%;background:${speedColor(v, cmax)};border-left:0" title="${this._fmt(v, 0)} ${esc(cunit)}"></i>`).join("");
+    // Charge du compresseur en % (fréquence / fréquence maximale)
+    let loadPlot = "";
+    if (this._g.info.compressor && this._show.load && d.comp.length) {
+      const LH = mobile ? 64 : 80;
+      const ly = (p) => (LH - (p / 100) * LH).toFixed(1);
+      let path = "";
+      let prev = null;
+      for (const [t, v] of [...d.comp, [last, d.comp.at(-1)?.[1] ?? null]]) {
+        if (v === null || v === undefined) { prev = null; continue; }
+        const p = Math.min(100, Math.max(0, (v / cmax) * 100));
+        const x = (pct(t) * 10).toFixed(1);
+        path += prev === null ? `M${x} ${LH}V${ly(p)}` : `H${x}V${ly(p)}`;
+        prev = p;
+      }
+      const xEnd = (pct(last) * 10).toFixed(1);
+      const area = path ? `${path}H${xEnd}V${LH}Z` : "";
+      loadPlot = `
+        <div class="chartwrap load">
+          <div class="ylabels"><span style="top:0%">100 %</span><span style="top:50%">50 %</span><span style="top:100%">0 %</span></div>
+          <div class="lplot" style="height:${LH}px" title="${esc(cknown ? "" : this._t("c_max_none"))}">
+            <svg viewBox="0 0 1000 ${LH}" preserveAspectRatio="none" aria-hidden="true">
+              <defs><linearGradient id="lg-load" gradientUnits="userSpaceOnUse" x1="0" x2="0" y1="${LH}" y2="0">
+                <stop offset="0" stop-color="hsl(210,85%,50%)"/><stop offset=".33" stop-color="hsl(120,85%,50%)"/><stop offset=".66" stop-color="hsl(55,85%,50%)"/><stop offset="1" stop-color="hsl(0,85%,50%)"/>
+              </linearGradient></defs>
+              <line class="grid" x1="0" x2="1000" y1="${ly(50)}" y2="${ly(50)}"></line>
+              <path class="load" d="${area}"></path>
+            </svg>
+          </div>
+        </div>`;
+    }
     const compRow = this._g.info.compressor ? `
       <span class="lab">${esc(this._t("compressor_band"))}</span><div class="cband">${compBlocks}</div>
       <span></span><span class="muted small">${esc(plural(this._t("starts_period"), starts).replace("{r}", this._fmt(starts / hours)))}</span>` : "";
@@ -1756,6 +1849,7 @@ class SplitSchedulerHistory extends HTMLElement {
         ${compRow}
       </div>
       <div class="chartwrap">${chart}</div>
+      ${loadPlot}
       <div class="xaxis">${ticks.join("")}</div>
       ${mobile ? `<div class="panel" hidden></div><span class="muted small center">${esc(this._t("touch_hint"))}</span>` : ""}`;
   }
@@ -1789,7 +1883,12 @@ class SplitSchedulerHistory extends HTMLElement {
           if ((sp === null || sp === undefined) && (am === null || am === undefined)) return "";
           return `<span class="sep"></span><span class="r held"><span>${esc(this._t("held_since").replace("{s}", x.name))}</span></span>${row("set dash", this._t("t_setpoint"), sp)}${row("amb dash", this._t("t_ambient"), am)}`;
         }).join("") : ""}
-        ${this._g.info.compressor && c !== undefined && c !== null ? `<span class="r"><span>${esc(this._t("compressor_band"))}</span><strong>${esc(c > 0 ? `${this._t("running")} · ${Math.round(c)} Hz` : this._t("stopped"))}</strong></span>` : ""}`;
+        ${this._g.info.compressor && c !== undefined && c !== null ? (() => {
+          const unit = this._hass.states[this._g.info.compressor]?.attributes?.unit_of_measurement || "Hz";
+          const { max, known } = compressorMax(this._hass, this._g, d.comp);
+          const share = known ? ` · ${Math.round(Math.min(100, (c / max) * 100))} %` : "";
+          return `<span class="r"><span>${esc(this._t("compressor_band"))}</span><strong>${esc(c > 0 ? `${this._t("running")} · ${Math.round(c)} ${unit}${share}` : this._t("stopped"))}</strong></span>`;
+        })() : ""}`;
       const empty = !p && [d.setpoint, d.ambient, d.outdoor, d.comp].every((serie) => valueAt(serie, t) == null);
       const content = empty ? `${html}<span class="muted">${esc(this._t("no_data_at"))}</span>` : html;
       if (mobile && panel) { panel.innerHTML = content; panel.hidden = false; }
@@ -1839,6 +1938,12 @@ const HISTORY_CSS = `
   .pband { position: relative; height: 22px; border-radius: 6px; background: ${mix("var(--primary-text-color)", 6)}; overflow: hidden; }
   .pband span { position: absolute; top: 0; bottom: 0; }
   .cband { position: relative; height: 14px; border-radius: 5px; background: ${mix("var(--primary-text-color)", 7)}; overflow: hidden; }
+  .lg.run { height: 8px; width: 22px; border: 0; border-radius: 2px; background: linear-gradient(90deg, hsl(210 85% 50%), hsl(120 85% 50%), hsl(55 85% 50%), hsl(0 85% 50%)); }
+  .lplot { position: relative; }
+  path.load { fill: url(#lg-load); opacity: .85; stroke: none; }
+  .lplot svg { display: block; width: 100%; height: 100%; overflow: visible; }
+  .chartwrap.load { margin-top: 14px; }
+  .chartwrap.load .ylabels span { font-size: 10.5px; }
   .cband i { position: absolute; top: 0; bottom: 0; background: ${mix("var(--primary-color)", 45)}; border-left: 2px solid var(--primary-color); box-sizing: border-box; }
   .chartwrap { display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: 0 12px; }
   .dlg.mobile .chartwrap { grid-template-columns: 44px minmax(0, 1fr); gap: 0 6px; }
@@ -1940,6 +2045,8 @@ const CARD_CSS = `
   .ticks span:last-child { transform: translateX(-100%); }
   .cbar { position: relative; height: 8px; border-radius: 4px; background: ${mix("var(--primary-text-color)", 7)}; overflow: hidden; }
   .cbar i { position: absolute; top: 0; bottom: 0; background: ${mix("var(--primary-color)", 45)}; }
+  .cbar u { z-index: 1; }
+  .sdot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 2px; }
   .cbar u { position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: var(--primary-color); }
   .cbar b { position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: var(--primary-text-color); }
   .chart { position: relative; }
@@ -2004,7 +2111,7 @@ const CARD_CSS = `
   .adapted { display: inline-flex; align-items: center; gap: 5px; height: 24px; margin-bottom: 4px; padding: 0 9px; border-radius: 12px; font-size: 12px; font-weight: 500; background: ${mix("var(--info-color, #039be5)", 16)}; color: ${mix("var(--info-color, #039be5)", 70, "var(--primary-text-color)")}; }
   .banner.info { background: ${mix("var(--info-color, #039be5)", 13)}; }
   .banner.info svg { flex-shrink: 0; color: ${mix("var(--info-color, #039be5)", 80, "var(--primary-text-color)")}; }
-  .lg.run { height: 8px; border: 0; border-radius: 2px; background: ${mix("var(--primary-color)", 45)}; box-shadow: inset 2px 0 var(--primary-color); }
+  .lg.run { height: 8px; width: 22px; border: 0; border-radius: 2px; background: linear-gradient(90deg, hsl(210 85% 50%), hsl(120 85% 50%), hsl(55 85% 50%), hsl(0 85% 50%)); }
   button { font: inherit; cursor: pointer; color: inherit; }
   .expander { display: flex; align-items: center; justify-content: center; gap: 6px; min-height: 44px; border: 0; border-top: 1px solid var(--divider-color); background: none; color: var(--primary-color); font-weight: 500; margin: 0 -4px -6px; }
   .edit { display: flex; flex-direction: column; gap: 16px; padding: 12px; border-radius: 12px; background: var(--secondary-background-color, #f7f8fa); }
@@ -2126,7 +2233,7 @@ class SplitSchedulerCardEditor extends HTMLElement {
     }
     const names = Object.fromEntries((this._info?.groups || []).map((g) => [g.id, g.name]));
     const manualOptions = ["temperature", "fan_mode", "swing_mode", "hvac_mode", "quiet_outdoor"].map((v) => ({ value: v, label: this._t(`m_${v}`) }));
-    const compressorOptions = ["avg_24h", "avg_profile"].map((v) => ({ value: v, label: this._t(`o_${v}`) }));
+    const compressorOptions = ["load", "avg_24h", "avg_profile"].map((v) => ({ value: v, label: this._t(`o_${v}`) }));
     const chartOptions = ["ambient", "setpoint", "outdoor"].map((v) => ({ value: v, label: this._t(`ch_${v}`) }));
     const infoById = Object.fromEntries((this._info?.groups || []).map((g) => [g.id, g]));
 
