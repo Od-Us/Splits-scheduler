@@ -21,9 +21,11 @@
  *       compressor_timeline: true            # frise des marches du compresseur
  *       chart: [ambient, setpoint, outdoor]  # courbes du jour (au choix)
  *   heat_pumps: groups               # panneaux des pompes à chaleur : none | groups | all
+ *   heat_pump_sensors:               # capteurs supplémentaires d'un panneau (facultatif)
+ *     <id de la pompe>: { sensors: [sensor.x], names: { sensor.x: Libellé } }
  */
 
-const CARD_VERSION = "1.16.1";
+const CARD_VERSION = "1.16.2";
 const ICON_URL = new URL("icon.png", import.meta.url).href;
 
 const GROUP_DEFAULTS = {
@@ -161,6 +163,9 @@ const I18N = {
     hp_conflict_short: "en veille : conflit avec {p}",
     hp_conflict_short_free: "conflit de mode sur {h}",
     e_heat_pumps: "Panneaux des pompes à chaleur",
+    e_hp_sensors_title: "Capteurs supplémentaires des pompes à chaleur",
+    e_hp_sensors: "Capteurs affichés dans le panneau",
+    e_hp_names: "Libellés (vide = nom du capteur)",
     hp_opt: { none: "Aucun", groups: "Pompes des groupes affichés", all: "Toutes les pompes" },
     stale: "Version {v} installée, mais ce navigateur affiche encore la carte {c} (cache).",
     ovr_n_splits: "Dérogation · {n} splits",
@@ -326,6 +331,9 @@ const I18N = {
     hp_conflict_short: "idle: conflict with {p}",
     hp_conflict_short_free: "mode conflict on {h}",
     e_heat_pumps: "Heat pump panels",
+    e_hp_sensors_title: "Heat pump extra sensors",
+    e_hp_sensors: "Sensors shown in the panel",
+    e_hp_names: "Labels (empty = sensor name)",
     hp_opt: { none: "None", groups: "Pumps of the shown groups", all: "All pumps" },
     stale: "Version {v} is installed, but this browser still shows card {c} (cache).",
     ovr_n_splits: "Override · {n} splits",
@@ -603,7 +611,7 @@ class SplitSchedulerCard extends HTMLElement {
       ids.push(...Object.values(g.info.entities), ...g.info.climates, ...Object.values(thermometers(g, this._hass.states)), ...(g.sensors || []),
         ...Object.values(g.info.quiet || {}).filter(Boolean));
     }
-    for (const hp of this._pumpsShown()) ids.push(...Object.values(hp.entities || {}), ...hp.climates, hp.power_sensor, hp.outdoor_sensor);
+    for (const hp of this._pumpsShown()) ids.push(...Object.values(hp.entities || {}), ...hp.climates, hp.power_sensor, hp.outdoor_sensor, ...(this._config.heat_pump_sensors?.[hp.id]?.sensors || []));
     const parts = ids.filter(Boolean).map((id) => {
       const s = this._hass.states[id];
       return s ? `${id}:${s.last_updated}` : id;
@@ -691,7 +699,8 @@ class SplitSchedulerCard extends HTMLElement {
         hp.power_sensor ? [this._t("hp_power"), Number.isFinite(power) ? `${this._fmt(power, 0)} W` : "–"] : null,
         e.energy_today ? [this._t("hp_energy"), Number.isFinite(energy) ? `${this._fmt(energy, 2)} kWh` : "–"] : null,
         hp.outdoor_sensor ? [this._t("hp_outdoor"), Number.isFinite(outdoor) ? `${this._fmt(outdoor)} °C` : "–"] : null,
-      ].filter(Boolean).map(([k, v]) => `<div class="stat"><span class="muted small">${esc(k)}</span><strong>${esc(v)}</strong></div>`).join("");
+      ].filter(Boolean).map(([k, v]) => `<div class="stat"><span class="muted small">${esc(k)}</span><strong>${esc(v)}</strong></div>`).join("")
+        + this._pumpExtras(hp).map(({ eid, label, value }) => `<button type="button" class="stat link" data-action="open-split" data-value="${esc(eid)}"><span class="muted small">${esc(label)}</span><strong>${esc(value)}</strong></button>`).join("");
       const prio = hp.priority ? this._splitName(hp.priority) : this._t("hp_none");
       const splits = hp.climates.map((eid) => {
         const st = this._state(eid);
@@ -707,6 +716,17 @@ class SplitSchedulerCard extends HTMLElement {
       </article>`;
     }).join("");
     return `<section class="pumps" aria-label="${esc(this._t("hp_title"))}"><h2 class="hptitle">${esc(this._t("hp_title"))}</h2><div class="grid">${panels}</div></section>`;
+  }
+
+  /** Capteurs supplémentaires choisis pour le panneau d'une pompe : [{eid, label, value}]. */
+  _pumpExtras(hp) {
+    const cfg = this._config?.heat_pump_sensors?.[hp.id] || {};
+    return (cfg.sensors || []).map((eid) => {
+      const st = this._state(eid);
+      const value = !st ? "–" : typeof this._hass.formatEntityState === "function"
+        ? this._hass.formatEntityState(st) : `${st.state} ${st.attributes.unit_of_measurement || ""}`.trim();
+      return { eid, label: cfg.names?.[eid] || st?.attributes?.friendly_name || eid, value };
+    });
   }
 
   /** Conflits de mode des splits d'un groupe : [{entity_id, pompe, prioritaire}]. */
@@ -2350,7 +2370,9 @@ const CARD_CSS = `
   .gauge i { display: block; height: 100%; border-radius: 5px; }
   .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 8px; }
   .stat { display: flex; flex-direction: column; gap: 2px; }
-  .stat strong { font-size: 16px; font-weight: 500; }
+  .stat strong { font-size: 16px; font-weight: 500; overflow-wrap: anywhere; }
+  .stat.link { border: 0; background: none; padding: 0; font: inherit; color: inherit; text-align: left; cursor: pointer; }
+  .stat.link:hover strong { text-decoration: underline; }
   .hpsplits { display: flex; flex-wrap: wrap; gap: 6px; }
   .hpsplit { border: 1px solid var(--divider-color); background: none; color: var(--primary-text-color); border-radius: 8px; padding: 4px 8px; font: inherit; font-size: 13px; cursor: pointer; min-height: 32px; }
   .hpsplit .small { color: var(--secondary-text-color); }
@@ -2467,9 +2489,13 @@ class SplitSchedulerCardEditor extends HTMLElement {
         const next = { ...this._config, ...value };
         if (!next.title) delete next.title;
         if (!next.heat_pumps || next.heat_pumps === "none") delete next.heat_pumps;
+        const rebuild = (next.heat_pumps || "none") !== (this._config.heat_pumps || "none");
         this._emit(next);
+        if (rebuild) this._build();  // section des capteurs des pompes affichée ou masquée
       },
     ));
+
+    this._buildPumpSensors(root);
 
     const heading = document.createElement("h3");
     heading.textContent = this._t("e_groups");
@@ -2636,6 +2662,69 @@ class SplitSchedulerCardEditor extends HTMLElement {
     }
   }
 }
+
+SplitSchedulerCardEditor.prototype._buildPumpSensors = function (root) {
+  const cfg = this._config;
+  const pumps = this._info?.heat_pumps || [];
+  if (!pumps.length || !cfg.heat_pumps || cfg.heat_pumps === "none") return;
+  const heading = document.createElement("h3");
+  heading.textContent = this._t("e_hp_sensors_title");
+  root.append(heading);
+  const save = (hpid, item) => {
+    const all = { ...(this._config.heat_pump_sensors || {}) };
+    const sensors = item.sensors || [];
+    const names = Object.fromEntries(Object.entries(item.names || {}).filter(([id, v]) => sensors.includes(id) && v));
+    if (sensors.length) all[hpid] = { sensors, ...(Object.keys(names).length ? { names } : {}) };
+    else delete all[hpid];
+    const next = { ...this._config, heat_pump_sensors: all };
+    if (!Object.keys(all).length) delete next.heat_pump_sensors;
+    this._emit(next);
+  };
+  for (const hp of pumps) {
+    const details = document.createElement("details");
+    details.dataset.group = `hp:${hp.id}`;
+    const current = cfg.heat_pump_sensors?.[hp.id] || {};
+    if ((current.sensors || []).length) details.open = true;
+    const summary = document.createElement("summary");
+    summary.textContent = hp.name;
+    details.append(summary);
+    const namesBox = document.createElement("div");
+    namesBox.className = "names";
+    const fillNames = (sensors) => {
+      namesBox.replaceChildren();
+      if (!sensors.length) return;
+      const title = document.createElement("p");
+      title.className = "hint";
+      title.textContent = this._t("e_hp_names");
+      const names = this._config.heat_pump_sensors?.[hp.id]?.names || {};
+      const form = this._form(
+        Object.fromEntries(sensors.map((id) => [id, names[id] || ""])),
+        sensors.map((id) => ({ name: id, selector: { text: {} } })),
+        (value) => {
+          const item = this._config.heat_pump_sensors?.[hp.id] || { sensors };
+          const cleaned = Object.fromEntries(Object.entries(value).map(([id, v]) => [id, String(v ?? "").trim()]));
+          save(hp.id, { ...item, names: cleaned });
+        },
+      );
+      form.computeLabel = (sch) => this._hass?.states[sch.name]?.attributes.friendly_name || sch.name;
+      namesBox.append(title, form);
+    };
+    let shown = [...(current.sensors || [])];
+    details.append(this._form(
+      { sensors: shown },
+      [{ name: "sensors", label: "e_hp_sensors", selector: { entity: { multiple: true } } }],
+      (value) => {
+        const sensors = value.sensors || [];
+        const item = this._config.heat_pump_sensors?.[hp.id] || {};
+        save(hp.id, { sensors, names: item.names || {} });
+        if (sensors.join("|") !== shown.join("|")) { shown = [...sensors]; fillNames(sensors); }
+      },
+    ));
+    fillNames(shown);
+    details.append(namesBox);
+    root.append(details);
+  }
+};
 
 const EDITOR_CSS = `
   :host { display: flex; flex-direction: column; gap: 12px; }

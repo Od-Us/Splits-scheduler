@@ -299,6 +299,11 @@ son mode (chauffage, froid, conflit, arrêt), une jauge de charge, la fréquence
 du compresseur, la puissance, la consommation du jour, la température
 extérieure (capteur Faikout d'un de ses splits), le split prioritaire (★) et le
 mode de chaque split (un clic ouvre son thermostat).
+Chaque panneau peut afficher en plus **un ou plusieurs capteurs au choix**
+(n'importe quelle entité : bruit, débit, température de l'unité…), avec un
+**libellé** au choix (vide = nom du capteur), réglés dans l'éditeur de la carte
+sous *Capteurs supplémentaires des pompes à chaleur* ; un clic sur la valeur
+ouvre l'entité.
 
 Un clic sur le **nom du groupe** affiche ses splits (mode, consigne, température
 mesurée, ou « injoignable ») ; un clic sur un split ouvre la fenêtre de son
