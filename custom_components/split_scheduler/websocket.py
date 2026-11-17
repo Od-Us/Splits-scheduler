@@ -101,6 +101,13 @@ def ws_info(
                     # capteur de compresseur principal (pompe de la majorité des splits)
                     "compressor": (scheduler.pump_sources.get(scheduler.main_pump(gid) or "") or [None])[0],
                     "heat_pumps": scheduler.group_pumps.get(gid, []),
+                    # tous les capteurs du compresseur principal (courbes : leur médiane)
+                    "compressors": scheduler.pump_sources.get(scheduler.main_pump(gid) or "", []),
+                    # capteur « compresseur » de la pompe principale (médiane, en direct)
+                    "compressor_median": (
+                        entity("sensor", f"{entry_id}_hp_{scheduler.main_pump(gid)}_pump_compressor")
+                        if scheduler.main_pump(gid) else None
+                    ),
                     # interrupteur « unité extérieure silencieuse » de chaque split (ou None)
                     "quiet": {
                         eid: scheduler.quiet_switches.get(eid) or quiet_switch(hass, eid)

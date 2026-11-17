@@ -308,7 +308,7 @@ Un clic sur les **frises ou les courbes** ouvre une **vue détaillée** : jour,
 3 jours ou semaine, flèches pour remonter dans le temps, frise des profils
 réellement appliqués (dérogations comprises), marches du compresseur et nombre
 de démarrages, courbes ambiance / consigne / extérieur à afficher ou masquer,
-charge du compresseur (simple ligne), et une bande par **capteur
+charge du compresseur (simple ligne ; comme la frise, elle suit la **médiane** des capteurs du compresseur de la pompe principale), et une bande par **capteur
 supplémentaire** du groupe (humidité, CO₂…) avec sa propre échelle et son unité,
 curseur donnant toutes les valeurs à l'instant choisi. Plein écran sur
 téléphone. La navigation est limitée à l'historique détaillé de Home Assistant

@@ -23,7 +23,7 @@
  *   heat_pumps: groups               # panneaux des pompes à chaleur : none | groups | all
  */
 
-const CARD_VERSION = "1.16.0";
+const CARD_VERSION = "1.16.1";
 const ICON_URL = new URL("icon.png", import.meta.url).href;
 
 const GROUP_DEFAULTS = {
@@ -1257,7 +1257,7 @@ class SplitSchedulerCard extends HTMLElement {
   }
 
   _historyKey(g) {
-    return [g.compressor_timeline, chartSeries(g.chart).join(","), g.temperature_entity, JSON.stringify(g.thermometers || {}), g.info.compressor, this._info.outdoor].join("|");
+    return [g.compressor_timeline, chartSeries(g.chart).join(","), g.temperature_entity, JSON.stringify(g.thermometers || {}), compressorSources(g).join(","), this._info.outdoor].join("|");
   }
 
   /** Valeurs actuelles des courbes (dernier point, mis à jour en direct). */
@@ -1290,15 +1290,15 @@ class SplitSchedulerCard extends HTMLElement {
       significant_changes_only: false,
     };
     const curve = curveEntities(g, this._hass.states);
-    const minimal = [...new Set([wantCompressor ? g.info.compressor : null, outdoorEntity, ...(wantCurves ? curve.minimal : [])].filter(Boolean))];
+    const minimal = [...new Set([...(wantCompressor ? compressorSources(g) : []), outdoorEntity, ...(wantCurves ? curve.minimal : [])].filter(Boolean))];
     const [sensorRows, climateRows] = await Promise.all([
       minimal.length ? this._hass.callWS({ ...base, entity_ids: minimal, minimal_response: true, no_attributes: true }) : {},
       wantCurves ? this._hass.callWS({ ...base, entity_ids: curve.full, minimal_response: false, no_attributes: false }) : {},
     ]);
     const time = (e) => Math.max(midnight, ((e.lu ?? e.lc) || 0) * 1000);
     const num = (v) => (v === undefined || v === null || v === "" || Number.isNaN(Number(v)) ? null : Number(v));
-    const result = { fetched: Date.now(), key: this._historyKey(g), midnight, compEntity: wantCompressor ? g.info.compressor : null };
-    if (wantCompressor) result.comp = (sensorRows[g.info.compressor] || []).map((e) => [time(e), e.s]);
+    const result = { fetched: Date.now(), key: this._historyKey(g), midnight, compEntity: wantCompressor ? (g.info.compressor_median || g.info.compressor) : null };
+    if (wantCompressor) result.comp = medianSeries(compressorSources(g).map((eid) => sensorRows[eid]), time);
     if (wantCurves) result.curves = groupCurves(g, climateRows, sensorRows, curve.thermo, time, num);
     if (outdoorEntity) {
       result.outdoor = (sensorRows[outdoorEntity] || []).map((e) => [time(e), num(e.s)]);
@@ -1623,6 +1623,35 @@ function compressorMax(hass, g, points) {
 
 /** Écart toléré entre la consigne d'un split et celle du groupe (comme l'intégration). */
 const TOLERANCE = 0.3;
+
+/** Capteurs du compresseur principal du groupe (plusieurs splits mesurent le même). */
+function compressorSources(g) {
+  return g.info.compressors?.length ? g.info.compressors : (g.info.compressor ? [g.info.compressor] : []);
+}
+
+/** Médiane, à chaque instant, des historiques de plusieurs capteurs du même compresseur. */
+function medianSeries(rowsList, time) {
+  const series = rowsList.map((rows) => (rows || []).map((e) => [time(e), e.s === undefined ? null : Number(e.s)])
+    .map(([t, v]) => [t, Number.isFinite(v) ? v : null]));
+  if (series.length === 1) return series[0];
+  const times = [...new Set(series.flatMap((sr) => sr.map(([t]) => t)))].sort((a, b) => a - b);
+  const idx = series.map(() => -1);
+  const out = [];
+  for (const t of times) {
+    const values = [];
+    series.forEach((sr, k) => {
+      while (idx[k] + 1 < sr.length && sr[idx[k] + 1][0] <= t) idx[k]++;
+      const v = idx[k] >= 0 ? sr[idx[k]][1] : null;
+      if (v !== null) values.push(v);
+    });
+    if (!values.length) { out.push([t, null]); continue; }
+    values.sort((a, b) => a - b);
+    const m = values.length % 2 ? values[(values.length - 1) / 2] : (values[values.length / 2 - 1] + values[values.length / 2]) / 2;
+    const v = Math.round(m * 10) / 10;
+    if (!out.length || out.at(-1)[1] !== v) out.push([t, v]);
+  }
+  return out;
+}
 // Couleurs des courbes des capteurs supplémentaires du groupe (vue détaillée)
 const EXTRA_COLORS = ["#8e24aa", "#00897b", "#6d4c41", "#3949ab", "#c2185b", "#7cb342"];
 
@@ -1764,7 +1793,7 @@ class SplitSchedulerHistory extends HTMLElement {
     const g = this._g;
     const curve = curveEntities(g, this._hass.states);
     const extras = (g.sensors || []).filter((id) => id.startsWith("sensor.") || id.startsWith("input_number.") || id.startsWith("number."));
-    const sensors = [...new Set([g.info.compressor, this._info.outdoor, ...curve.minimal, ...extras].filter(Boolean))];
+    const sensors = [...new Set([...compressorSources(g), this._info.outdoor, ...curve.minimal, ...extras].filter(Boolean))];
     const base = {
       type: "history/history_during_period",
       start_time: new Date(start).toISOString(),
@@ -1793,7 +1822,8 @@ class SplitSchedulerHistory extends HTMLElement {
           eid, name: this._hass.states[eid]?.attributes?.friendly_name || eid, setpoint: v.setpoint, ambient: v.ambient,
         })),
         outdoor: this._info.outdoor ? (sensorRows[this._info.outdoor] || []).map((e) => [time(e), num(e.s)]) : [],
-        comp: g.info.compressor ? (sensorRows[g.info.compressor] || []).map((e) => [time(e), num(e.s)]) : [],
+        // compresseur : médiane des capteurs de ses splits, comme la pastille
+        comp: g.info.compressor ? medianSeries(compressorSources(g).map((eid) => sensorRows[eid]), time) : [],
         profile: profileRows.map((e) => [time(e), { name: e.s, adapted: e.a?.adaptation_exterieure === true }]),
         // Capteurs supplémentaires du groupe : une courbe chacun, avec sa propre échelle
         extras: extras.map((eid, i) => ({
