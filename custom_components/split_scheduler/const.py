@@ -25,8 +25,15 @@ CONF_PROGRAMS = "programs"
 CONF_COMPRESSOR = "compressor"
 CONF_SETTINGS = "settings"
 CONF_OUTDOOR = "outdoor_sensor"
-# Fréquence maximale du compresseur (unité du capteur : Hz ou rpm), saisie par groupe
+# Fréquence maximale du compresseur (unité du capteur : Hz ou rpm), saisie par pompe à chaleur
 CONF_COMPRESSOR_MAX = "compressor_max"
+# Pompes à chaleur (unités extérieures) : splits reliés, split prioritaire, compresseur, compteurs
+CONF_HEAT_PUMPS = "heat_pumps"
+CONF_MODEL = "model"
+CONF_PRIORITY = "priority"
+CONF_COMPRESSORS = "compressors"
+CONF_POWER = "power_sensor"
+CONF_ENERGY = "energy_sensor"
 # Réglages généraux pour les systèmes multi-split : envoyés avec chaque commande à un split
 CONF_SEND_NORMAL = "send_normal_preset"   # préréglage Normal (home), coupe ECONO / Powerful
 CONF_ALWAYS_QUIET = "always_quiet"        # unité extérieure silencieuse activée
@@ -77,7 +84,8 @@ STATUSES = [STATUS_SCHEDULED, STATUS_OVERRIDE, STATUS_DISABLED, STATUS_NO_PROGRA
 def default_options() -> dict:
     """Profils et plannings proposés à l'installation (modifiables ensuite)."""
     return {
-        CONF_MIGRATIONS: ["summer_profiles", "remove_presets"],
+        CONF_MIGRATIONS: ["summer_profiles", "remove_presets", "heat_pumps"],
+        CONF_HEAT_PUMPS: {},
         CONF_GROUPS: {},
         CONF_PROFILES: {
             "hors_gel": {"name": "Hors gel", ATTR_HVAC_MODE: "heat", ATTR_TEMPERATURE: 10.0},
@@ -229,7 +237,7 @@ def ordered(items: dict[str, dict]) -> dict[str, dict]:
 
 def with_positions(options: dict) -> dict:
     """Numérote groupes, profils et plannings selon leur ordre actuel."""
-    for kind in (CONF_GROUPS, CONF_PROFILES, CONF_PLANNINGS):
+    for kind in (CONF_GROUPS, CONF_PROFILES, CONF_PLANNINGS, CONF_HEAT_PUMPS):
         for index, item in enumerate(options.get(kind, {}).values()):
             item[CONF_POS] = index
     return options
@@ -238,6 +246,7 @@ def with_positions(options: dict) -> dict:
 SUMMER_PROFILES = ("confort_ete", "eco_ete")
 MIGRATION_SUMMER_PROFILES = "summer_profiles"
 MIGRATION_REMOVE_PRESETS = "remove_presets"
+MIGRATION_HEAT_PUMPS = "heat_pumps"
 
 
 def allowed_profiles(planning: dict, profiles: dict[str, dict]) -> list[str]:

@@ -17,12 +17,76 @@
         "title": "Programmation des splits",
         "description": "Choisissez ce que vous voulez modifier. **Pensez à « Enregistrer et fermer »** : sinon les modifications sont perdues.",
         "menu_options": {
+          "settings": "Réglages généraux",
+          "heat_pumps": "Pompes à chaleur",
           "groups": "Groupes de splits",
-          "profiles": "Profils de fonctionnement",
           "plannings": "Types de planning",
+          "profiles": "Profils de fonctionnement",
           "program_pick": "Programme hebdomadaire d'un groupe",
-          "save": "Enregistrer et fermer",
-          "settings": "Réglages généraux"
+          "save": "Enregistrer et fermer"
+        }
+      },
+      "heat_pumps": {
+        "title": "Pompes à chaleur",
+        "menu_options": {
+          "heat_pump_add": "Ajouter une pompe à chaleur",
+          "heat_pump_edit_pick": "Modifier une pompe à chaleur",
+          "heat_pump_delete": "Supprimer des pompes à chaleur",
+          "init": "Retour"
+        }
+      },
+      "heat_pump_add": {
+        "title": "Nouvelle pompe à chaleur",
+        "data": {
+          "name": "Nom",
+          "model": "Modèle (facultatif)",
+          "climates": "Splits reliés à cette unité extérieure",
+          "priority": "Split prioritaire (facultatif)",
+          "compressors": "Capteurs du compresseur (facultatif)",
+          "compressor_max": "Fréquence maximale du compresseur (facultatif)",
+          "power_sensor": "Capteur de puissance électrique, W (facultatif)",
+          "energy_sensor": "Compteur d'énergie, kWh (facultatif)"
+        },
+        "data_description": {
+          "priority": "Réglage de l'unité extérieure (« pièce prioritaire ») : son mode chaud/froid s'impose, les splits en mode opposé restent en veille. Vide : le premier split démarré décide.",
+          "compressors": "Vide : capteurs « Compressor » de Faikout détectés sur les splits ({detected}). Plusieurs capteurs mesurent le même compresseur : la valeur retenue est leur médiane.",
+          "compressor_max": "Dans l'unité du capteur (Hz ou tr/min), d'après le manuel de service de l'unité extérieure. Vide : la 3e plus forte heure des 30 derniers jours (un pic isolé est ignoré). Sert au calcul de la charge du compresseur (%).",
+          "power_sensor": "Prise ou pince de mesure sur l'alimentation de l'unité extérieure. Sans compteur d'énergie, la consommation du jour est intégrée à partir de la puissance.",
+          "energy_sensor": "Compteur cumulé : la consommation du jour est la différence depuis minuit."
+        },
+        "description": "Une pompe à chaleur (unité extérieure) alimente plusieurs splits par **un même compresseur**. Un split ne peut appartenir qu'à une seule pompe à chaleur. Les splits d'un même groupe peuvent dépendre de pompes différentes."
+      },
+      "heat_pump_edit": {
+        "title": "Modifier la pompe à chaleur",
+        "data": {
+          "name": "Nom",
+          "model": "Modèle (facultatif)",
+          "climates": "Splits reliés à cette unité extérieure",
+          "priority": "Split prioritaire (facultatif)",
+          "compressors": "Capteurs du compresseur (facultatif)",
+          "compressor_max": "Fréquence maximale du compresseur (facultatif)",
+          "power_sensor": "Capteur de puissance électrique, W (facultatif)",
+          "energy_sensor": "Compteur d'énergie, kWh (facultatif)"
+        },
+        "data_description": {
+          "priority": "Réglage de l'unité extérieure (« pièce prioritaire ») : son mode chaud/froid s'impose, les splits en mode opposé restent en veille. Vide : le premier split démarré décide.",
+          "compressors": "Vide : capteurs « Compressor » de Faikout détectés sur les splits ({detected}). Plusieurs capteurs mesurent le même compresseur : la valeur retenue est leur médiane.",
+          "compressor_max": "Dans l'unité du capteur (Hz ou tr/min), d'après le manuel de service de l'unité extérieure. Vide : la 3e plus forte heure des 30 derniers jours (un pic isolé est ignoré). Sert au calcul de la charge du compresseur (%).",
+          "power_sensor": "Prise ou pince de mesure sur l'alimentation de l'unité extérieure. Sans compteur d'énergie, la consommation du jour est intégrée à partir de la puissance.",
+          "energy_sensor": "Compteur cumulé : la consommation du jour est la différence depuis minuit."
+        },
+        "description": "Une pompe à chaleur (unité extérieure) alimente plusieurs splits par **un même compresseur**. Un split ne peut appartenir qu'à une seule pompe à chaleur. Les splits d'un même groupe peuvent dépendre de pompes différentes."
+      },
+      "heat_pump_edit_pick": {
+        "title": "Modifier une pompe à chaleur",
+        "data": {
+          "heat_pump": "Pompe à chaleur"
+        }
+      },
+      "heat_pump_delete": {
+        "title": "Supprimer des pompes à chaleur",
+        "data": {
+          "heat_pumps": "Pompes à chaleur à supprimer"
         }
       },
       "groups": {
@@ -38,15 +102,9 @@
         "title": "Nouveau groupe",
         "data": {
           "name": "Nom",
-          "climates": "Splits (thermostats)",
-          "compressor": "Capteur du compresseur (facultatif)",
-          "compressor_max": "Fréquence maximale du compresseur (facultatif)"
+          "climates": "Splits (thermostats)"
         },
-        "data_description": {
-          "compressor": "Vide : détection automatique du capteur « Compressor » de Faikout. Sert à compter les démarrages du compresseur.",
-          "compressor_max": "Dans l'unité du capteur (Hz ou tr/min), d'après le manuel de service de l'unité extérieure. Vide : la 3e plus forte heure des 30 derniers jours (un pic isolé est ignoré). Sert au calcul de la charge du compresseur (%)."
-        },
-        "description": "**Précaution :** tous les splits d'un groupe sont considérés comme reliés au **même compresseur** (même unité extérieure). Si ce n'est pas le cas, créez un groupe par unité extérieure, sinon le comptage des démarrages du compresseur sera faux."
+        "description": "Les splits d'un groupe suivent le même programme. Le compresseur, le split prioritaire et les compteurs se règlent dans **Pompes à chaleur**."
       },
       "group_edit_pick": {
         "title": "Modifier un groupe",
@@ -58,15 +116,9 @@
         "title": "Modifier le groupe",
         "data": {
           "name": "Nom",
-          "climates": "Splits (thermostats)",
-          "compressor": "Capteur du compresseur (facultatif)",
-          "compressor_max": "Fréquence maximale du compresseur (facultatif)"
+          "climates": "Splits (thermostats)"
         },
-        "data_description": {
-          "compressor": "Vide : détection automatique du capteur « Compressor » de Faikout. Sert à compter les démarrages du compresseur.",
-          "compressor_max": "Dans l'unité du capteur (Hz ou tr/min), d'après le manuel de service de l'unité extérieure. Vide : la 3e plus forte heure des 30 derniers jours (un pic isolé est ignoré). Sert au calcul de la charge du compresseur (%)."
-        },
-        "description": "**Précaution :** tous les splits d'un groupe sont considérés comme reliés au **même compresseur** (même unité extérieure). Si ce n'est pas le cas, créez un groupe par unité extérieure, sinon le comptage des démarrages du compresseur sera faux."
+        "description": "Les splits d'un groupe suivent le même programme. Le compresseur, le split prioritaire et les compteurs se règlent dans **Pompes à chaleur**."
       },
       "group_delete": {
         "title": "Supprimer des groupes",
@@ -203,7 +255,7 @@
       },
       "program_week": {
         "title": "Programme hebdomadaire",
-        "description": "**{group}** — planning **{planning}**\n\nChoisissez un jour pour ajouter, modifier ou supprimer ses changements de profil. Un jour vide garde le dernier profil de la veille.",
+        "description": "**{group}** — planning **{planning}**\n\nChoisissez un jour pour ajouter, modifier ou supprimer ses changements de profil. Un jour vide garde le dernier profil de la veille.{warnings}",
         "menu_options": {
           "day_mon": "Lundi",
           "day_tue": "Mardi",
@@ -299,7 +351,9 @@
       "allowed_required": "Cochez au moins un profil.",
       "allowed_in_use": "Profil utilisé dans le programme de ce planning : {used}. Retirez-le d'abord des lignes concernées.",
       "copy_target_required": "Choisissez au moins un planning et un groupe (autre que le programme d'origine).",
-      "copy_not_allowed": "Copie impossible : des profils du programme ne sont pas autorisés dans ces plannings : {refused}. Autorisez-les dans le type de planning, ou retirez ces plannings."
+      "copy_not_allowed": "Copie impossible : des profils du programme ne sont pas autorisés dans ces plannings : {refused}. Autorisez-les dans le type de planning, ou retirez ces plannings.",
+      "climate_other_pump": "Un de ces splits appartient déjà à une autre pompe à chaleur.",
+      "priority_not_member": "Le split prioritaire doit faire partie des splits de cette pompe à chaleur."
     }
   },
   "selector": {
@@ -378,6 +432,24 @@
       },
       "compressor_load": {
         "name": "Charge du compresseur"
+      },
+      "pump_mode": {
+        "name": "Mode",
+        "state": {
+          "heat": "Chauffage",
+          "cool": "Froid",
+          "conflict": "Conflit de mode",
+          "idle": "Arrêt"
+        }
+      },
+      "pump_compressor": {
+        "name": "Compresseur"
+      },
+      "pump_load": {
+        "name": "Charge du compresseur"
+      },
+      "pump_energy_today": {
+        "name": "Consommation du jour"
       }
     }
   }

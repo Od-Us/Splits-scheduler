@@ -31,8 +31,13 @@ from .const import (
     ATTR_SWING_MODE,
     ATTR_TEMPERATURE,
     CONF_CLIMATES,
-    CONF_COMPRESSOR,
     CONF_COMPRESSOR_MAX,
+    CONF_COMPRESSORS,
+    CONF_ENERGY,
+    CONF_HEAT_PUMPS,
+    CONF_MODEL,
+    CONF_POWER,
+    CONF_PRIORITY,
     CONF_ALWAYS_QUIET,
     CONF_OUTDOOR,
     CONF_SEND_NORMAL,
@@ -62,7 +67,8 @@ from .outdoor import (
     round_half,
 )
 from .compressor import robust_maximum
-from .features import quiet_switch
+from .features import compressor_sensor, quiet_switch
+from .heatpump import EnergyToday, find_conflicts, mode_side, shared_value
 from .planning import Program, current_occurrence, next_occurrence
 
 _LOGGER = logging.getLogger(__name__)
@@ -173,7 +179,16 @@ class SplitScheduler:
         self.always_quiet: bool = bool(options.get(CONF_SETTINGS, {}).get(CONF_ALWAYS_QUIET))
         # Interrupteur « unité extérieure silencieuse » de chaque split (Faikout)
         self.quiet_switches: dict[str, str] = {}
-        # Fréquence maximale du compresseur par groupe : {valeur, source, unite}
+        # Pompes à chaleur : capteurs du compresseur, pompe de chaque split, pompe principale
+        # de chaque groupe (celle de la majorité de ses splits)
+        self.heat_pumps: dict[str, dict] = ordered(options.get(CONF_HEAT_PUMPS, {}))
+        self.pump_sources: dict[str, list[str]] = {}
+        self.pump_of: dict[str, str] = {
+            eid: hpid for hpid, hp in self.heat_pumps.items() for eid in hp.get(CONF_CLIMATES, [])
+        }
+        self.group_pumps: dict[str, list[str]] = {}
+        self.energy: dict[str, EnergyToday] = {}
+        # Fréquence maximale du compresseur par pompe : {valeur, source, unite}
         self.compressor_max: dict[str, dict[str, Any]] = {}
         self.outdoor = OutdoorAverage()
         self._unsubs: list[CALLBACK_TYPE] = []
@@ -182,7 +197,20 @@ class SplitScheduler:
 
     async def async_load(self) -> None:
         """Restaure l'état d'exécution sauvegardé."""
-        stored = (await self._store.async_load() or {}).get("groups", {})
+        saved = await self._store.async_load() or {}
+        stored = saved.get("groups", {})
+        for hpid, pump in self.heat_pumps.items():
+            self.pump_sources[hpid] = list(pump.get(CONF_COMPRESSORS) or []) or [
+                sensor for eid in pump.get(CONF_CLIMATES, []) if (sensor := compressor_sensor(self.hass, eid))
+            ]
+            self.energy[hpid] = EnergyToday.from_dict(saved.get("heat_pumps", {}).get(hpid))
+        for gid, group in self.groups.items():
+            counts: dict[str, int] = {}
+            for eid in group[CONF_CLIMATES]:
+                if (hpid := self.pump_of.get(eid)) is not None:
+                    counts[hpid] = counts.get(hpid, 0) + 1
+            # pompe principale en premier (la plus représentée), puis les autres
+            self.group_pumps[gid] = sorted(counts, key=lambda h: -counts[h])
         default_planning = next(iter(self.plannings), "")
         for gid in self.groups:
             data = stored.get(gid, {})
@@ -210,7 +238,7 @@ class SplitScheduler:
                     and (since := _parse(o.get("since"))) is not None
                 },
             )
-            if self.groups[gid].get(CONF_COMPRESSOR):
+            if self.main_pump(gid):
                 stored_log = data.get("compressor")
                 self.states[gid].compressor = (
                     StartLog.from_dict(stored_log, _parse) if stored_log else None
@@ -230,18 +258,16 @@ class SplitScheduler:
         self.quiet_switches = {
             eid: switch for eid in climates if (switch := quiet_switch(self.hass, eid))
         }
-        compressors = {
-            g[CONF_COMPRESSOR]: gid for gid, g in self.groups.items() if g.get(CONF_COMPRESSOR)
-        }
+        compressors = sorted({eid for sources in self.pump_sources.values() for eid in sources})
         if compressors:
-            for gid, group in self.groups.items():
-                if not group.get(CONF_COMPRESSOR):
+            for gid in self.groups:
+                if (hpid := self.main_pump(gid)) is None:
                     continue
                 await self._async_backfill_compressor(gid)
                 log = self.states[gid].compressor
-                current = self.hass.states.get(group[CONF_COMPRESSOR])
-                if log is not None and log.running is None and current is not None:
-                    log.feed(current.last_changed, current.state)  # état de départ
+                value = self.pump_frequency(hpid)
+                if log is not None and log.running is None and value is not None:
+                    log.feed(dt_util.utcnow(), str(value))  # état de départ
             self._unsubs.append(
                 async_track_state_change_event(
                     self.hass, list(compressors), self._on_compressor_change
@@ -264,7 +290,19 @@ class SplitScheduler:
                     self.hass, [self.outdoor_entity], self._on_outdoor_change
                 )
             )
-        if compressors or self.outdoor_entity:
+        meters = {
+            eid: hpid
+            for hpid, pump in self.heat_pumps.items()
+            for eid in (pump.get(CONF_ENERGY), pump.get(CONF_POWER))
+            if eid
+        }
+        if meters:
+            for hpid in self.heat_pumps:
+                self._feed_energy(hpid)
+            self._unsubs.append(
+                async_track_state_change_event(self.hass, list(meters), self._on_meter_change)
+            )
+        if compressors or self.outdoor_entity or meters:
             # Moyennes et adaptation à l'extérieur : réexamen chaque minute.
             self._unsubs.append(
                 async_track_time_interval(self.hass, self._async_tick, timedelta(minutes=1))
@@ -307,7 +345,10 @@ class SplitScheduler:
                 if state.profile_changed_at is not None:
                     keep = min(keep, state.profile_changed_at)
                 state.compressor.prune(keep, now)
-        return {"groups": {gid: st.as_dict() for gid, st in self.states.items()}}
+        return {
+            "groups": {gid: st.as_dict() for gid, st in self.states.items()},
+            "heat_pumps": {hpid: energy.as_dict() for hpid, energy in self.energy.items()},
+        }
 
     @callback
     def _notify(self) -> None:
@@ -317,6 +358,9 @@ class SplitScheduler:
     async def _async_tick(self, _now: datetime) -> None:
         for gid in self.groups:
             await self._async_adapt(gid)
+        for hpid, pump in self.heat_pumps.items():
+            if pump.get(CONF_POWER) and not pump.get(CONF_ENERGY):
+                self._feed_energy(hpid)  # intégration de la puissance, minute par minute
         self._notify()
 
     # ------------------------------------------------------------------ température extérieure
@@ -460,35 +504,187 @@ class SplitScheduler:
 
     # ------------------------------------------------------------------ compresseur
 
+    # ------------------------------------------------------------------ pompes à chaleur
+
+    def main_pump(self, gid: str) -> str | None:
+        """Pompe à chaleur de la majorité des splits du groupe, si son compresseur est suivi."""
+        pumps = self.group_pumps.get(gid) or []
+        return pumps[0] if pumps and self.pump_sources.get(pumps[0]) else None
+
+    def pump_frequency(self, hpid: str) -> float | None:
+        """Fréquence du compresseur : médiane des capteurs des splits de la pompe."""
+        values = []
+        for eid in self.pump_sources.get(hpid, []):
+            state = self.hass.states.get(eid)
+            try:
+                values.append(float(state.state))  # type: ignore[union-attr]
+            except (AttributeError, TypeError, ValueError):
+                continue
+        return shared_value(values)
+
+    def pump_unit(self, hpid: str) -> str | None:
+        for eid in self.pump_sources.get(hpid, []):
+            if (state := self.hass.states.get(eid)) and (
+                unit := state.attributes.get("unit_of_measurement")
+            ):
+                return unit
+        return self.compressor_max.get(hpid, {}).get("unite")
+
+    def pump_modes(self, hpid: str) -> dict[str, str | None]:
+        """Mode actuel (état du thermostat) de chaque split de la pompe."""
+        modes: dict[str, str | None] = {}
+        for eid in self.heat_pumps[hpid].get(CONF_CLIMATES, []):
+            state = self.hass.states.get(eid)
+            modes[eid] = state.state if state and state.state not in _NOT_READY else None
+        return modes
+
+    def pump_conflicts(self, hpid: str) -> dict[str, str | None]:
+        """Splits en mode opposé au split prioritaire (ou entre eux sans prioritaire)."""
+        return find_conflicts(self.pump_modes(hpid), self.heat_pumps[hpid].get(CONF_PRIORITY))
+
+    def group_conflicts(self, gid: str) -> list[dict[str, Any]]:
+        """Splits du groupe en conflit de mode avec leur pompe à chaleur."""
+        result = []
+        for hpid in self.group_pumps.get(gid, []):
+            for eid, priority in self.pump_conflicts(hpid).items():
+                if eid in self.groups[gid][CONF_CLIMATES]:
+                    result.append({"entity_id": eid, "pompe": self.heat_pumps[hpid]["name"], "prioritaire": priority})
+        return result
+
+    def pump_mode(self, hpid: str) -> str:
+        """Côté de fonctionnement de la pompe : heat, cool, conflict ou idle."""
+        if self.pump_conflicts(hpid):
+            return "conflict"
+        sides = {mode_side(mode) for mode in self.pump_modes(hpid).values()} - {None}
+        return next(iter(sides)) if sides else "idle"
+
+    def pump_load(self, hpid: str | None) -> tuple[float | None, dict[str, Any]]:
+        """Charge du compresseur en % de sa fréquence maximale (bornée à 100)."""
+        info = self.compressor_max.get(hpid, {}) if hpid else {}
+        value = self.pump_frequency(hpid) if hpid else None
+        attrs = {
+            "frequence": value,
+            "frequence_max": info.get("valeur"),
+            "source_max": info.get("source"),
+            "unite": self.pump_unit(hpid) if hpid else None,
+            "capteurs": self.pump_sources.get(hpid, []) if hpid else [],
+        }
+        maximum = info.get("valeur")
+        if value is None or not maximum:
+            return None, attrs
+        return round(min(100.0, max(0.0, value / maximum * 100))), attrs
+
+    def compressor_load(self, gid: str) -> tuple[float | None, dict[str, Any]]:
+        """Charge du compresseur de la pompe principale du groupe."""
+        return self.pump_load(self.main_pump(gid))
+
+    def energy_today(self, hpid: str) -> float | None:
+        pump = self.heat_pumps[hpid]
+        if not pump.get(CONF_ENERGY) and not pump.get(CONF_POWER):
+            return None
+        energy = self.energy[hpid]
+        if energy.day != dt_util.now().date().isoformat():
+            return 0.0
+        return round(energy.kwh, 2)
+
+    def _number(self, entity_id: str | None) -> float | None:
+        state = self.hass.states.get(entity_id) if entity_id else None
+        try:
+            return float(state.state)  # type: ignore[union-attr]
+        except (AttributeError, TypeError, ValueError):
+            return None
+
+    def _feed_energy(self, hpid: str) -> None:
+        """Consommation du jour : compteur cumulé (kWh), sinon intégration de la puissance (W)."""
+        pump, now = self.heat_pumps[hpid], dt_util.now()
+        energy = self.energy[hpid]
+        if pump.get(CONF_ENERGY):
+            total = self._number(pump[CONF_ENERGY])
+            if total is not None:
+                state = self.hass.states.get(pump[CONF_ENERGY])
+                if state and state.attributes.get("unit_of_measurement") == "Wh":
+                    total /= 1000
+                energy.from_counter(now, total)
+        elif pump.get(CONF_POWER):
+            watts = self._number(pump[CONF_POWER])
+            state = self.hass.states.get(pump[CONF_POWER])
+            if watts is not None and state and state.attributes.get("unit_of_measurement") == "kW":
+                watts *= 1000
+            energy.from_power(now, watts)
+
+    @callback
+    def _on_meter_change(self, event: Event[EventStateChangedData]) -> None:
+        for hpid, pump in self.heat_pumps.items():
+            if event.data["entity_id"] in (pump.get(CONF_ENERGY), pump.get(CONF_POWER)):
+                self._feed_energy(hpid)
+        self._store.async_delay_save(self._data_to_save, 60)
+        self._notify()
+
+    def pump_info(self, hpid: str) -> dict[str, Any]:
+        """Tout ce que la carte affiche pour une pompe à chaleur."""
+        pump = self.heat_pumps[hpid]
+        load, attrs = self.pump_load(hpid)
+        outdoor = detect_outdoor_sensor(self.hass, pump.get(CONF_CLIMATES, []))
+        return {
+            "id": hpid,
+            "name": pump["name"],
+            "model": pump.get(CONF_MODEL),
+            "climates": pump.get(CONF_CLIMATES, []),
+            "priority": pump.get(CONF_PRIORITY),
+            "sources": self.pump_sources.get(hpid, []),
+            "frequency": attrs["frequence"],
+            "unit": attrs["unite"],
+            "max": attrs["frequence_max"],
+            "max_source": attrs["source_max"],
+            "load": load,
+            "power_sensor": pump.get(CONF_POWER),
+            "power": self._number(pump.get(CONF_POWER)),
+            "energy_sensor": pump.get(CONF_ENERGY),
+            "energy_today": self.energy_today(hpid),
+            "outdoor_sensor": outdoor,
+            "outdoor": self._number(outdoor),
+            "modes": self.pump_modes(hpid),
+            "mode": self.pump_mode(hpid),
+            "conflicts": self.pump_conflicts(hpid),
+        }
+
+    # ------------------------------------------------------------------ compresseur
+
     @callback
     def _on_compressor_change(self, event: Event[EventStateChangedData]) -> None:
         new = event.data["new_state"]
         if new is None:
             return
         for gid, group in self.groups.items():
+            hpid = self.main_pump(gid)
             log = self.states[gid].compressor
-            if group.get(CONF_COMPRESSOR) == event.data["entity_id"] and log is not None:
-                if log.feed(new.last_changed, new.state):
-                    _LOGGER.debug("Groupe « %s » : démarrage du compresseur", group["name"])
-                    self._changed()
+            if hpid is None or log is None or event.data["entity_id"] not in self.pump_sources[hpid]:
+                continue
+            value = self.pump_frequency(hpid)
+            if value is not None and log.feed(new.last_changed, str(value)):
+                _LOGGER.debug("Groupe « %s » : démarrage du compresseur", group["name"])
+                self._changed()
         self._notify()  # charge du compresseur (%) à jour
 
     async def _async_update_compressor_max(self, _now: datetime | None = None) -> None:
         """Fréquence maximale de chaque compresseur : saisie, sinon observée sur 30 jours."""
-        for gid, group in self.groups.items():
-            entity_id = group.get(CONF_COMPRESSOR)
-            if not entity_id:
+        for hpid, pump in self.heat_pumps.items():
+            sources = self.pump_sources.get(hpid)
+            if not sources:
                 continue
-            current = self.hass.states.get(entity_id)
-            unit = current.attributes.get("unit_of_measurement") if current else None
-            if group.get(CONF_COMPRESSOR_MAX):
-                self.compressor_max[gid] = {
-                    "valeur": float(group[CONF_COMPRESSOR_MAX]), "source": "saisie", "unite": unit,
+            unit = self.pump_unit(hpid)
+            if pump.get(CONF_COMPRESSOR_MAX):
+                self.compressor_max[hpid] = {
+                    "valeur": float(pump[CONF_COMPRESSOR_MAX]), "source": "saisie", "unite": unit,
                 }
                 continue
-            maxima = await self._async_hourly_maxima(entity_id)
-            value = robust_maximum(maxima, unit)
-            self.compressor_max[gid] = {
+            found = [
+                value
+                for eid in sources
+                if (value := robust_maximum(await self._async_hourly_maxima(eid), unit)) is not None
+            ]
+            value = shared_value(found)
+            self.compressor_max[hpid] = {
                 "valeur": value, "source": "observee_30j" if value is not None else None, "unite": unit,
             }
         self._notify()
@@ -527,32 +723,13 @@ class SplitScheduler:
             hours[hour] = max(hours.get(hour, 0.0), value)
         return list(hours.values())
 
-    def compressor_load(self, gid: str) -> tuple[float | None, dict[str, Any]]:
-        """Charge du compresseur en % de sa fréquence maximale (bornée à 100)."""
-        info = self.compressor_max.get(gid, {})
-        entity_id = self.groups[gid].get(CONF_COMPRESSOR)
-        current = self.hass.states.get(entity_id) if entity_id else None
-        attrs = {
-            "frequence": None,
-            "frequence_max": info.get("valeur"),
-            "source_max": info.get("source"),
-            "unite": (current.attributes.get("unit_of_measurement") if current else None)
-            or info.get("unite"),
-        }
-        try:
-            value = float(current.state) if current else None
-        except ValueError:
-            value = None
-        attrs["frequence"] = value
-        maximum = info.get("valeur")
-        if value is None or not maximum:
-            return None, attrs
-        return round(min(100.0, max(0.0, value / maximum * 100))), attrs
-
     async def _async_backfill_compressor(self, gid: str) -> None:
         """Reconstitue les démarrages depuis l'historique (si l'enregistreur est actif)."""
         state = self.states[gid]
-        entity_id = self.groups[gid][CONF_COMPRESSOR]
+        hpid = self.main_pump(gid)
+        if hpid is None:
+            return
+        entity_id = self.pump_sources[hpid][0]
         if "recorder" not in self.hass.config.components or state.compressor is None:
             return
         from homeassistant.components.recorder import history
@@ -1070,8 +1247,10 @@ class SplitScheduler:
         if old is None or old.state in _NOT_READY:
             return
         now = dt_util.utcnow()
-        if any(entity_id in st.split_overrides for st in self.states.values()):
-            self._notify()  # écarts affichés pour ce split : à jour
+        if entity_id in self.pump_of or any(
+            entity_id in st.split_overrides for st in self.states.values()
+        ):
+            self._notify()  # écarts et conflits de mode affichés pour ce split : à jour
         for gid, group in self.groups.items():
             state = self.states[gid]
             if (

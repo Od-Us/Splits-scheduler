@@ -15,7 +15,6 @@ from homeassistant.config_entries import (
     OptionsFlow,
 )
 from homeassistant.core import callback
-from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.selector import (
     BooleanSelector,
     EntitySelector,
@@ -40,8 +39,13 @@ from .const import (
     ATTR_TEMPERATURE,
     CONF_CLIMATES,
     CONF_ALLOWED,
-    CONF_COMPRESSOR,
     CONF_COMPRESSOR_MAX,
+    CONF_COMPRESSORS,
+    CONF_ENERGY,
+    CONF_HEAT_PUMPS,
+    CONF_MODEL,
+    CONF_POWER,
+    CONF_PRIORITY,
     CONF_ALWAYS_QUIET,
     CONF_OUTDOOR,
     CONF_SEND_NORMAL,
@@ -64,7 +68,8 @@ from .const import (
     with_positions,
     lang_of,
 )
-from .features import quiet_switch
+from .features import compressor_sensor, quiet_switch
+from .heatpump import mode_side, program_conflicts
 from .planning import ProgramError, format_day, normalize, parse_day, profiles_used
 from .scheduler import detect_outdoor_sensor
 
@@ -127,7 +132,7 @@ class SplitSchedulerOptionsFlow(OptionsFlow):
         """Copie de travail des options."""
         if self._options is None:
             self._options = copy.deepcopy(dict(self.config_entry.options))
-            for key in (CONF_GROUPS, CONF_PROFILES, CONF_PLANNINGS):
+            for key in (CONF_GROUPS, CONF_PROFILES, CONF_PLANNINGS, CONF_HEAT_PUMPS):
                 self._options[key] = ordered(self._options.get(key, {}))
         return self._options
 
@@ -142,7 +147,7 @@ class SplitSchedulerOptionsFlow(OptionsFlow):
     # ------------------------------------------------------------------ menu principal
 
     async def async_step_init(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
-        menu = ["groups", "profiles", "plannings", "settings"]
+        menu = ["settings", "heat_pumps", "groups", "plannings", "profiles"]
         if self.opts[CONF_GROUPS] and self.opts[CONF_PLANNINGS]:
             menu.append("program_pick")
         menu.append("save")
@@ -190,6 +195,124 @@ class SplitSchedulerOptionsFlow(OptionsFlow):
         menu.append("init")
         return self.async_show_menu(step_id=step_id, menu_options=menu)
 
+    # ------------------------------------------------------------------ pompes à chaleur
+
+    async def async_step_heat_pumps(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        return self._submenu("heat_pumps", CONF_HEAT_PUMPS)
+
+    async def async_step_heat_pump_add(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        return await self._async_heat_pump_form("heat_pump_add", user_input, None)
+
+    async def async_step_heat_pump_edit_pick(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        if user_input is not None:
+            self._edit_id = user_input["heat_pump"]
+            return await self.async_step_heat_pump_edit()
+        return self.async_show_form(
+            step_id="heat_pump_edit_pick",
+            data_schema=vol.Schema({vol.Required("heat_pump"): _picker(self.opts[CONF_HEAT_PUMPS])}),
+        )
+
+    async def async_step_heat_pump_edit(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        return await self._async_heat_pump_form("heat_pump_edit", user_input, self._edit_id)
+
+    async def _async_heat_pump_form(
+        self, step_id: str, user_input: dict[str, Any] | None, pump_id: str | None
+    ) -> ConfigFlowResult:
+        errors: dict[str, str] = {}
+        placeholders = {"detected": "—"}
+        values = self.opts[CONF_HEAT_PUMPS].get(pump_id, {}) if pump_id else {}
+        if user_input is not None:
+            name = user_input.get("name", "").strip()
+            climates = user_input.get(CONF_CLIMATES, [])
+            priority = user_input.get(CONF_PRIORITY)
+            taken = {
+                eid
+                for pid, pump in self.opts[CONF_HEAT_PUMPS].items()
+                if pid != pump_id
+                for eid in pump.get(CONF_CLIMATES, [])
+            }
+            if not name:
+                errors["name"] = "name_required"
+            elif self._name_taken(CONF_HEAT_PUMPS, name, pump_id):
+                errors["name"] = "name_taken"
+            elif not climates:
+                errors[CONF_CLIMATES] = "climates_required"
+            elif taken & set(climates):
+                errors[CONF_CLIMATES] = "climate_other_pump"
+            elif priority and priority not in climates:
+                errors[CONF_PRIORITY] = "priority_not_member"
+            else:
+                pump: dict[str, Any] = {"name": name, CONF_CLIMATES: climates}
+                if user_input.get(CONF_MODEL, "").strip():
+                    pump[CONF_MODEL] = user_input[CONF_MODEL].strip()
+                if priority:
+                    pump[CONF_PRIORITY] = priority
+                if user_input.get(CONF_COMPRESSORS):
+                    pump[CONF_COMPRESSORS] = list(user_input[CONF_COMPRESSORS])
+                if user_input.get(CONF_COMPRESSOR_MAX):
+                    pump[CONF_COMPRESSOR_MAX] = float(user_input[CONF_COMPRESSOR_MAX])
+                for key in (CONF_POWER, CONF_ENERGY):
+                    if user_input.get(key):
+                        pump[key] = user_input[key]
+                self.opts[CONF_HEAT_PUMPS][pump_id or _new_id()] = pump
+                return await self.async_step_heat_pumps()
+            values = user_input
+        detected = [s for eid in values.get(CONF_CLIMATES, []) if (s := compressor_sensor(self.hass, eid))]
+        if detected:
+            placeholders["detected"] = ", ".join(detected)
+        schema = vol.Schema(
+            {
+                vol.Required("name", default=values.get("name", "")): TextSelector(),
+                vol.Optional(CONF_MODEL): TextSelector(),
+                vol.Required(CONF_CLIMATES, default=values.get(CONF_CLIMATES, [])): EntitySelector(
+                    EntitySelectorConfig(domain="climate", multiple=True)
+                ),
+                vol.Optional(CONF_PRIORITY): EntitySelector(EntitySelectorConfig(domain="climate")),
+                vol.Optional(CONF_COMPRESSORS): EntitySelector(
+                    EntitySelectorConfig(domain="sensor", multiple=True)
+                ),
+                vol.Optional(CONF_COMPRESSOR_MAX): NumberSelector(
+                    NumberSelectorConfig(min=1, max=15000, step=1, mode=NumberSelectorMode.BOX)
+                ),
+                vol.Optional(CONF_POWER): EntitySelector(
+                    EntitySelectorConfig(domain="sensor")
+                ),
+                vol.Optional(CONF_ENERGY): EntitySelector(
+                    EntitySelectorConfig(domain="sensor")
+                ),
+            }
+        )
+        schema = self.add_suggested_values_to_schema(
+            schema, {key: values.get(key) for key in (
+                CONF_MODEL, CONF_PRIORITY, CONF_COMPRESSORS, CONF_COMPRESSOR_MAX, CONF_POWER, CONF_ENERGY
+            )},
+        )
+        return self.async_show_form(
+            step_id=step_id, data_schema=schema, errors=errors, description_placeholders=placeholders
+        )
+
+    async def async_step_heat_pump_delete(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        if user_input is not None:
+            for pid in user_input.get("heat_pumps", []):
+                self.opts[CONF_HEAT_PUMPS].pop(pid, None)
+            return await self.async_step_heat_pumps()
+        return self.async_show_form(
+            step_id="heat_pump_delete",
+            data_schema=vol.Schema(
+                {vol.Optional("heat_pumps", default=[]): _picker(self.opts[CONF_HEAT_PUMPS], multiple=True)}
+            ),
+        )
+
     # ------------------------------------------------------------------ groupes
 
     async def async_step_groups(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
@@ -228,11 +351,6 @@ class SplitSchedulerOptionsFlow(OptionsFlow):
                 errors[CONF_CLIMATES] = "climates_required"
             else:
                 group = {"name": name, CONF_CLIMATES: climates}
-                compressor = user_input.get(CONF_COMPRESSOR) or self._detect_compressor(climates)
-                if compressor:
-                    group[CONF_COMPRESSOR] = compressor
-                if user_input.get(CONF_COMPRESSOR_MAX):
-                    group[CONF_COMPRESSOR_MAX] = float(user_input[CONF_COMPRESSOR_MAX])
                 # la position est renumérotée à l'enregistrement
                 self.opts[CONF_GROUPS][group_id or _new_id()] = group
                 return await self.async_step_groups()
@@ -243,32 +361,9 @@ class SplitSchedulerOptionsFlow(OptionsFlow):
                 vol.Required(CONF_CLIMATES, default=values.get(CONF_CLIMATES, [])): EntitySelector(
                     EntitySelectorConfig(domain="climate", multiple=True)
                 ),
-                vol.Optional(CONF_COMPRESSOR): EntitySelector(EntitySelectorConfig(domain="sensor")),
-                vol.Optional(CONF_COMPRESSOR_MAX): NumberSelector(
-                    NumberSelectorConfig(min=1, max=15000, step=1, mode=NumberSelectorMode.BOX)
-                ),
             }
         )
-        schema = self.add_suggested_values_to_schema(
-            schema,
-            {CONF_COMPRESSOR: values.get(CONF_COMPRESSOR), CONF_COMPRESSOR_MAX: values.get(CONF_COMPRESSOR_MAX)},
-        )
         return self.async_show_form(step_id=step_id, data_schema=schema, errors=errors)
-
-    def _detect_compressor(self, climates: list[str]) -> str | None:
-        """Capteur « Compressor » du même appareil que l'un des splits (Faikout)."""
-        registry = er.async_get(self.hass)
-        for climate in climates:
-            entry = registry.async_get(climate)
-            if entry is None or entry.device_id is None:
-                continue
-            for candidate in er.async_entries_for_device(registry, entry.device_id):
-                label = normalize(
-                    f"{candidate.entity_id} {candidate.original_name or ''} {candidate.name or ''}"
-                )
-                if candidate.domain == "sensor" and "compress" in label:
-                    return candidate.entity_id
-        return None
 
     async def async_step_group_delete(
         self, user_input: dict[str, Any] | None = None
@@ -700,6 +795,51 @@ class SplitSchedulerOptionsFlow(OptionsFlow):
             "day": _DAY_NAMES[self._lang][self._day],
         }
 
+    def _heat_pump_warnings(self) -> str:
+        """Plages où ce programme chauffe pendant que le split prioritaire de la même pompe
+        à chaleur refroidit (ou l'inverse), dans le même planning."""
+        assert self._program_target is not None
+        planning_id, group_id = self._program_target
+        programs = self.opts[CONF_PLANNINGS][planning_id].get(CONF_PROGRAMS, {})
+        profiles, lang = self.opts[CONF_PROFILES], self._lang
+        txt = _TXT[lang]
+        own_climates = set(self.opts[CONF_GROUPS][group_id][CONF_CLIMATES])
+
+        def side_of(pid: str | None) -> str | None:
+            return mode_side(profiles.get(pid, {}).get(ATTR_HVAC_MODE)) if pid else None
+
+        lines: list[str] = []
+        for pump in self.opts.get(CONF_HEAT_PUMPS, {}).values():
+            members = set(pump.get(CONF_CLIMATES, []))
+            if not own_climates & members:
+                continue
+            references = [pump[CONF_PRIORITY]] if pump.get(CONF_PRIORITY) else sorted(members - own_climates)
+            for gid, group in self.opts[CONF_GROUPS].items():
+                split = next((eid for eid in references if eid in group[CONF_CLIMATES]), None)
+                if gid == group_id or split is None or split in own_climates:
+                    continue
+                state = self.hass.states.get(split)
+                split_name = state.name if state else split
+                for start, end, mine, theirs in program_conflicts(
+                    programs.get(group_id, {}), programs.get(gid, {}), side_of
+                )[:4]:
+                    day = _DAY_NAMES[lang][start // 1440][:3]
+                    lines.append(
+                        txt["hp_conflict" if pump.get(CONF_PRIORITY) else "hp_conflict_shared"].format(
+                            day=day,
+                            start=f"{start % 1440 // 60:02d}:{start % 60:02d}",
+                            end="24:00" if end % 1440 == 0 and end > start else f"{end % 1440 // 60:02d}:{end % 60:02d}",
+                            mine=txt[f"side_{mine}"],
+                            theirs=txt[f"side_{theirs}"],
+                            split=split_name,
+                            group=group["name"],
+                            pump=pump["name"],
+                        )
+                    )
+        if not lines:
+            return ""
+        return "\n\n" + txt["hp_conflict_title"] + "\n" + "\n".join(f"- {line}" for line in lines[:8])
+
     def _allowed_here(self) -> list[str]:
         """Profils autorisés dans le planning dont on édite le programme."""
         assert self._program_target is not None
@@ -745,6 +885,7 @@ class SplitSchedulerOptionsFlow(OptionsFlow):
                 )
             else:
                 placeholders[day] = _TXT[lang]["empty_week"]
+        placeholders["warnings"] = self._heat_pump_warnings()
         return self.async_show_menu(
             step_id="program_week",
             menu_options=[f"day_{day}" for day in WEEKDAY_KEYS]
@@ -1015,6 +1156,11 @@ _TXT = {
         "start_none": "Ce programme ne contient encore aucune ligne.",
         "line_new": "nouvelle ligne",
         "line_edit": "ligne de {time}",
+        "hp_conflict_title": "⚠️ **Conflit avec la pompe à chaleur** — ces splits resteront en veille :",
+        "hp_conflict": "{day} {start}–{end} : {mine} ici, {theirs} pour **{split}** ({group}, prioritaire sur {pump})",
+        "hp_conflict_shared": "{day} {start}–{end} : {mine} ici, {theirs} pour **{split}** ({group}, même pompe {pump}) — définissez un split prioritaire",
+        "side_heat": "chauffage",
+        "side_cool": "froid",
     },
     "en": {
         "inherited": "No change — {profile} since {day} {time}",
@@ -1027,5 +1173,10 @@ _TXT = {
         "start_none": "This program has no line yet.",
         "line_new": "new line",
         "line_edit": "line at {time}",
+        "hp_conflict_title": "⚠️ **Heat pump conflict** — these splits will stay idle:",
+        "hp_conflict": "{day} {start}–{end}: {mine} here, {theirs} for **{split}** ({group}, priority on {pump})",
+        "hp_conflict_shared": "{day} {start}–{end}: {mine} here, {theirs} for **{split}** ({group}, same pump {pump}) — set a priority split",
+        "side_heat": "heating",
+        "side_cool": "cooling",
     },
 }

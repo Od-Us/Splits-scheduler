@@ -30,7 +30,10 @@ async def _setup(hass, freezer, group_extra=None, unit="Hz"):
     hass.states.async_set(CLIMATE, "heat", ATTRS)
     hass.states.async_set(COMP, "26", {"unit_of_measurement": unit})
     options = default_options()
-    options["groups"] = {"salon": {"name": "Salon", "climates": [CLIMATE], "compressor": COMP, **(group_extra or {})}}
+    options["groups"] = {"salon": {"name": "Salon", "climates": [CLIMATE]}}
+    options["heat_pumps"] = {
+        "pac": {"name": "PAC", "climates": [CLIMATE], "compressors": [COMP], **(group_extra or {})}
+    }
     entry = MockConfigEntry(domain=DOMAIN, options=with_positions(options))
     entry.add_to_hass(hass)
     assert await hass.config_entries.async_setup(entry.entry_id)

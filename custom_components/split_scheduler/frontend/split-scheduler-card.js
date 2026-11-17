@@ -20,9 +20,10 @@
  *       compressor: [avg_24h, avg_profile]   # démarrages du compresseur par heure
  *       compressor_timeline: true            # frise des marches du compresseur
  *       chart: [ambient, setpoint, outdoor]  # courbes du jour (au choix)
+ *   heat_pumps: groups               # panneaux des pompes à chaleur : none | groups | all
  */
 
-const CARD_VERSION = "1.15.1";
+const CARD_VERSION = "1.16.0";
 const ICON_URL = new URL("icon.png", import.meta.url).href;
 
 const GROUP_DEFAULTS = {
@@ -102,9 +103,9 @@ const I18N = {
     c_profile: "Compresseur depuis {profile}",
     c_unit: "dém./h",
     c_detail: "{n} démarrage en {hours} h|{n} démarrages en {hours} h",
-    e_compressor: "Démarrages du compresseur par heure (compresseur commun à tous les splits du groupe)",
-    e_compressor_missing: "Aucun capteur de compresseur pour ce groupe : indiquez-le dans la configuration du groupe (Paramètres › Programmation des splits › Configurer › Groupes).",
-    e_compressor_ok: "Tous les splits du groupe sont considérés comme reliés au même compresseur.",
+    e_compressor: "Compresseur (pompe à chaleur de la majorité des splits du groupe)",
+    e_compressor_missing: "Aucune pompe à chaleur avec compresseur pour ce groupe : ajoutez-la dans Paramètres › Programmation des splits › Configurer › Pompes à chaleur.",
+    e_compressor_ok: "Charge : une pastille par pompe à chaleur si les splits du groupe en utilisent plusieurs. Démarrages : pompe principale du groupe.",
     o_avg_24h: "Moyenne sur les 24 dernières heures",
     o_avg_profile: "Moyenne depuis le dernier changement de profil",
     o_load: "Fréquence actuelle et charge (% de la fréquence maximale)",
@@ -145,6 +146,22 @@ const I18N = {
     no_data_at: "Aucune donnée à cet instant.",
     resume_at: "Reprise",
     resume_now: "Reprendre maintenant",
+    hp_title: "Pompes à chaleur",
+    hp_mode: { heat: "Chauffage", cool: "Froid", conflict: "Conflit de mode", idle: "Arrêt" },
+    hp_load: "Charge",
+    hp_power: "Puissance",
+    hp_energy: "Aujourd'hui",
+    hp_outdoor: "Extérieur",
+    hp_priority: "Split prioritaire",
+    hp_none: "aucun",
+    hp_splits: "Splits",
+    hp_model: "Modèle",
+    hp_conflict: "{s} : mode {m} demandé, mais {p} est en mode {q} sur la même pompe à chaleur ({h}) — ce split reste en veille.",
+    hp_conflict_free: "{s} : mode {m} demandé alors que d'autres splits de {h} sont en mode {q} — l'unité extérieure ne servira qu'un des deux modes.",
+    hp_conflict_short: "en veille : conflit avec {p}",
+    hp_conflict_short_free: "conflit de mode sur {h}",
+    e_heat_pumps: "Panneaux des pompes à chaleur",
+    hp_opt: { none: "Aucun", groups: "Pompes des groupes affichés", all: "Toutes les pompes" },
     stale: "Version {v} installée, mais ce navigateur affiche encore la carte {c} (cache).",
     ovr_n_splits: "Dérogation · {n} splits",
     t_setpoint_group: "Consigne du groupe",
@@ -251,9 +268,9 @@ const I18N = {
     c_profile: "Compressor since {profile}",
     c_unit: "starts/h",
     c_detail: "{n} start in {hours} h|{n} starts in {hours} h",
-    e_compressor: "Compressor starts per hour (compressor shared by all splits of the group)",
-    e_compressor_missing: "No compressor sensor for this group: set it in the group configuration (Settings › Split scheduler › Configure › Groups).",
-    e_compressor_ok: "All splits of the group are assumed to share the same compressor.",
+    e_compressor: "Compressor (heat pump of most of the group's splits)",
+    e_compressor_missing: "No heat pump with a compressor for this group: add it in Settings › Split scheduler › Configure › Heat pumps.",
+    e_compressor_ok: "Load: one chip per heat pump when the group's splits use several. Starts: the group's main pump.",
     o_avg_24h: "Average over the last 24 hours",
     o_avg_profile: "Average since the last profile change",
     o_load: "Current frequency and load (% of maximum frequency)",
@@ -294,6 +311,22 @@ const I18N = {
     no_data_at: "No data at this time.",
     resume_at: "Resumes",
     resume_now: "Resume now",
+    hp_title: "Heat pumps",
+    hp_mode: { heat: "Heating", cool: "Cooling", conflict: "Mode conflict", idle: "Off" },
+    hp_load: "Load",
+    hp_power: "Power",
+    hp_energy: "Today",
+    hp_outdoor: "Outdoor",
+    hp_priority: "Priority split",
+    hp_none: "none",
+    hp_splits: "Splits",
+    hp_model: "Model",
+    hp_conflict: "{s}: {m} requested, but {p} is {q} on the same heat pump ({h}) — this split stays idle.",
+    hp_conflict_free: "{s}: {m} requested while other splits of {h} are {q} — the outdoor unit will serve only one of the two modes.",
+    hp_conflict_short: "idle: conflict with {p}",
+    hp_conflict_short_free: "mode conflict on {h}",
+    e_heat_pumps: "Heat pump panels",
+    hp_opt: { none: "None", groups: "Pumps of the shown groups", all: "All pumps" },
     stale: "Version {v} is installed, but this browser still shows card {c} (cache).",
     ovr_n_splits: "Override · {n} splits",
     t_setpoint_group: "Group target",
@@ -443,6 +476,7 @@ class SplitSchedulerCard extends HTMLElement {
     this.attachShadow({ mode: "open" });
     this._expanded = new Set();
     this._splitsOpen = new Set();
+    this._pumpsClosed = new Set();
     this._history = {};
     this._historyLoading = new Set();
     this._historyStamp = 0;
@@ -569,11 +603,12 @@ class SplitSchedulerCard extends HTMLElement {
       ids.push(...Object.values(g.info.entities), ...g.info.climates, ...Object.values(thermometers(g, this._hass.states)), ...(g.sensors || []),
         ...Object.values(g.info.quiet || {}).filter(Boolean));
     }
+    for (const hp of this._pumpsShown()) ids.push(...Object.values(hp.entities || {}), ...hp.climates, hp.power_sensor, hp.outdoor_sensor);
     const parts = ids.filter(Boolean).map((id) => {
       const s = this._hass.states[id];
       return s ? `${id}:${s.last_updated}` : id;
     });
-    return [JSON.stringify(this._config), this._error, this._confirm ? "confirm" : "", JSON.stringify(this._quietPending || {}), JSON.stringify(this._quietMsg || {}), JSON.stringify(this._pending), [...this._expanded].join(), [...this._splitsOpen].join(), lang(this._hass), this._historyStamp, ...parts].join("|");
+    return [JSON.stringify(this._config), this._error, this._confirm ? "confirm" : "", JSON.stringify(this._quietPending || {}), JSON.stringify(this._quietMsg || {}), JSON.stringify(this._pending), [...this._expanded].join(), [...this._splitsOpen].join(), [...this._pumpsClosed].join(), lang(this._hass), this._historyStamp, ...parts].join("|");
   }
 
   _render() {
@@ -600,7 +635,101 @@ class SplitSchedulerCard extends HTMLElement {
         ${this._renderStale()}
         ${this._renderHeader()}
         <div class="grid">${groups.map((g) => this._renderGroup(g)).join("")}</div>
+        ${this._renderPumps()}
       </div>`;
+  }
+
+  /** Pompes à chaleur à afficher selon l'option heat_pumps (none | groups | all). */
+  _pumpsShown() {
+    const mode = this._config?.heat_pumps || "none";
+    const pumps = this._info?.heat_pumps || [];
+    if (mode === "all") return pumps;
+    if (mode !== "groups") return [];
+    const used = new Set(this._groupConfigs().flatMap((g) => g.info?.heat_pumps || []));
+    return pumps.filter((hp) => used.has(hp.id));
+  }
+
+  _pump(id) {
+    return (this._info?.heat_pumps || []).find((hp) => hp.id === id);
+  }
+
+  /** Conflits de mode d'une pompe : {split: prioritaire en cause ou null} (états en direct). */
+  _pumpConflicts(hp) {
+    const attrs = this._state(hp.entities?.mode)?.attributes;
+    return attrs?.conflits || hp.conflicts || {};
+  }
+
+  _renderPumps() {
+    const pumps = this._pumpsShown();
+    if (!pumps.length) return "";
+    const L = I18N[lang(this._hass)];
+    const panels = pumps.map((hp) => {
+      const e = hp.entities || {};
+      const modeState = this._state(e.mode)?.state || hp.mode || "idle";
+      const open = !this._pumpsClosed.has(hp.id);
+      const color = { heat: "#e8710a", cool: "#039be5", conflict: "var(--error-color, #db4437)" }[modeState] || "var(--disabled-color, #9e9e9e)";
+      const comp = this._state(e.compressor);
+      const freq = Number(comp?.state);
+      const unit = comp?.attributes?.unit_of_measurement || hp.unit || "Hz";
+      const loadState = this._state(e.load);
+      const load = Number(loadState?.state);
+      const power = Number(this._state(hp.power_sensor)?.state);
+      const energy = Number(this._state(e.energy_today)?.state);
+      const outdoor = Number(this._state(hp.outdoor_sensor)?.state);
+      const conflicts = this._pumpConflicts(hp);
+      const head = `<button type="button" class="hphead" aria-expanded="${open}" data-action="pump" data-value="${esc(hp.id)}">
+          ${svg(ICONS.wave, 18)}<span class="col"><strong>${esc(hp.name)}</strong>${hp.model ? `<span class="muted small">${esc(hp.model)}</span>` : ""}</span>
+          <span class="hpmode" style="background:${mix(color, 18)};color:${mix(color, 75, "var(--primary-text-color)")}">${esc(L.hp_mode[modeState] || modeState)}</span>
+          ${!open && Number.isFinite(load) ? `<strong class="small">${load} %</strong>` : ""}
+          ${svg(open ? ICONS.up : ICONS.down, 18)}</button>`;
+      if (!open) return `<article class="pump">${head}</article>`;
+      const gauge = Number.isFinite(load)
+        ? `<div class="gauge" role="meter" aria-valuenow="${load}" aria-valuemin="0" aria-valuemax="100" aria-label="${esc(this._t("hp_load"))}"><i style="width:${load}%;background:${speedColor(load, 100)}"></i></div>`
+        : "";
+      const stats = [
+        comp ? [this._t("t_compressor"), Number.isFinite(freq) ? `${this._fmt(freq, 0)} ${unit}${Number.isFinite(load) ? ` · ${load} %` : ""}` : "–"] : null,
+        hp.power_sensor ? [this._t("hp_power"), Number.isFinite(power) ? `${this._fmt(power, 0)} W` : "–"] : null,
+        e.energy_today ? [this._t("hp_energy"), Number.isFinite(energy) ? `${this._fmt(energy, 2)} kWh` : "–"] : null,
+        hp.outdoor_sensor ? [this._t("hp_outdoor"), Number.isFinite(outdoor) ? `${this._fmt(outdoor)} °C` : "–"] : null,
+      ].filter(Boolean).map(([k, v]) => `<div class="stat"><span class="muted small">${esc(k)}</span><strong>${esc(v)}</strong></div>`).join("");
+      const prio = hp.priority ? this._splitName(hp.priority) : this._t("hp_none");
+      const splits = hp.climates.map((eid) => {
+        const st = this._state(eid);
+        const bad = eid in conflicts;
+        const m = st ? (L.hvac[st.state] || st.state) : "–";
+        return `<button type="button" class="hpsplit${bad ? " bad" : ""}" data-action="open-split" data-value="${esc(eid)}">${eid === hp.priority ? "★ " : ""}${esc(this._splitName(eid, st))} <span class="small">${esc(m)}</span></button>`;
+      }).join("");
+      return `<article class="pump">${head}
+        ${gauge}
+        ${stats ? `<div class="stats">${stats}</div>` : ""}
+        <div class="small"><span class="muted">${esc(this._t("hp_priority"))} :</span> ${esc(prio)}</div>
+        <div class="hpsplits">${splits}</div>
+      </article>`;
+    }).join("");
+    return `<section class="pumps" aria-label="${esc(this._t("hp_title"))}"><h2 class="hptitle">${esc(this._t("hp_title"))}</h2><div class="grid">${panels}</div></section>`;
+  }
+
+  /** Conflits de mode des splits d'un groupe : [{entity_id, pompe, prioritaire}]. */
+  _groupConflicts(g, pa) {
+    if (Array.isArray(pa.conflits_mode)) return pa.conflits_mode;
+    return [];
+  }
+
+  _conflictText(c, short = false) {
+    const L = I18N[lang(this._hass)];
+    const st = this._state(c.entity_id);
+    const side = (m) => (m === "heat" ? "heat" : m === "cool" || m === "dry" ? "cool" : null);
+    const mine = st?.state;
+    const other = side(mine) === "heat" ? "cool" : "heat";
+    const q = (L.hvac[other] || other).toLowerCase();
+    if (short) {
+      return c.prioritaire
+        ? this._t("hp_conflict_short").replace("{p}", this._splitName(c.prioritaire))
+        : this._t("hp_conflict_short_free").replace("{h}", c.pompe);
+    }
+    return this._t(c.prioritaire ? "hp_conflict" : "hp_conflict_free")
+      .replace("{s}", this._splitName(c.entity_id, st)).replace("{m}", (L.hvac[mine] || mine || "").toLowerCase())
+      .replace("{p}", c.prioritaire ? this._splitName(c.prioritaire) : "").replace("{q}", q).replace("{h}", c.pompe);
   }
 
   /** Le navigateur a gardé une ancienne carte alors que l'intégration a été mise à jour. */
@@ -736,6 +865,10 @@ class SplitSchedulerCard extends HTMLElement {
         .replace("{d}", this._fmt(pa.ecart_max_exterieur, 0)).replace("{p}", this._fmt(pa.consigne_profil, 0));
       banner += `<div class="banner info">${svg(ICONS.info, 18)}<span>${esc(text)}</span></div>`;
     }
+    const conflicts = this._groupConflicts(g, pa);
+    for (const c of conflicts) {
+      banner += `<div class="banner err" role="alert">${svg(ICONS.alert, 18)}<span>${esc(this._conflictText(c))}</span></div>`;
+    }
     if (status === "override" && !groupOverride) {
       const others = g.info.climates.length - splitOvr.length;
       for (const o of splitOvr) banner += this._splitBanner(g, o, others);
@@ -786,7 +919,7 @@ class SplitSchedulerCard extends HTMLElement {
           </button>
           <span class="status" title="${esc(statusText)}" style="background:${mix(statusColor, 18)};color:${mix(statusColor, 70, "var(--primary-text-color)")}">${svg(statusIcon, 14)}<span class="ell">${esc(statusText)}</span></span>
         </div>
-        ${this._splitsOpen.has(g.group) ? this._renderSplits(g, splitOvr) : ""}
+        ${this._splitsOpen.has(g.group) ? this._renderSplits(g, splitOvr, pa0.conflits_mode || []) : ""}
         <div class="row between end">
           <div class="col"><span class="muted small">${esc(this._t("setpoint"))}</span>
             <span class="row bigrow">${big}${adapted ? `<span class="adapted">${svg(pa.consigne_appliquee > pa.consigne_profil ? ICONS.adapt_up : ICONS.adapt_down, 13)}${esc(this._t("adapted"))}</span>` : ""}</span>
@@ -805,9 +938,10 @@ class SplitSchedulerCard extends HTMLElement {
       </article>`;
   }
 
-  _renderSplits(g, splitOvr = []) {
+  _renderSplits(g, splitOvr = [], conflicts = []) {
     const hvac = I18N[lang(this._hass)].hvac;
     const byId = Object.fromEntries(splitOvr.map((o) => [o.entity_id, o]));
+    const conflictOf = Object.fromEntries(conflicts.map((c) => [c.entity_id, c]));
     const rows = g.info.climates.map((eid) => {
       const s = this._state(eid);
       const name = s?.attributes?.friendly_name || eid;
@@ -829,8 +963,11 @@ class SplitSchedulerCard extends HTMLElement {
       }
       const o = byId[eid];
       const extra = o ? [this._ecarts(o), o.reprise ? `${this._t("resume_at").toLowerCase()} ${this._time(o.reprise)}` : ""].filter(Boolean).join(" · ") : "";
-      return `<div class="splitrow${o ? " held" : ""}"><button type="button" class="split" data-action="open-split" data-group="${esc(g.group)}" data-value="${esc(eid)}" aria-label="${esc(this._t("open_split"))} : ${esc(name)}">
-        <i style="background:${color}"></i><span class="col"><strong>${esc(name)}</strong><span class="small ${warn ? "err" : "muted"}">${esc(sub)}</span>${extra ? `<span class="small devi">${esc(extra)}</span>` : ""}</span>${svg(ICONS.ext, 16)}</button>
+      const conflict = conflictOf[eid];
+      if (conflict) { color = "var(--error-color, #db4437)"; }
+      const conflictLine = conflict ? `<span class="small err">⚠ ${esc(this._conflictText(conflict, true))}</span>` : "";
+      return `<div class="splitrow${o ? " held" : ""}${conflict ? " bad" : ""}"><button type="button" class="split" data-action="open-split" data-group="${esc(g.group)}" data-value="${esc(eid)}" aria-label="${esc(this._t("open_split"))} : ${esc(name)}">
+        <i style="background:${color}"></i><span class="col"><strong>${esc(name)}</strong><span class="small ${warn ? "err" : "muted"}">${esc(sub)}</span>${extra ? `<span class="small devi">${esc(extra)}</span>` : ""}${conflictLine}</span>${svg(ICONS.ext, 16)}</button>
         ${o ? `<button type="button" class="filled resume" data-action="split-resume" data-group="${esc(g.group)}" data-value="${esc(eid)}" aria-label="${esc(this._t("split_resume"))} : ${esc(name)}" title="${esc(this._t("split_resume"))}">${svg(ICONS.resume, 20)}</button>` : ""}</div>`;
     }).join("");
     return `<div class="splits">${rows}</div>`;
@@ -898,16 +1035,20 @@ class SplitSchedulerCard extends HTMLElement {
     const e = g.info.entities;
     const chips = [];
     if (wanted.includes("load")) {
-      const comp = this._state(g.info.compressor);
-      const n = Number(comp?.state);
-      if (comp && Number.isFinite(n)) {
+      const pumps = (g.info.heat_pumps || []).map((id) => this._pump(id)).filter(Boolean);
+      // Une pastille par pompe à chaleur quand le groupe en utilise plusieurs
+      const sources = pumps.length
+        ? pumps.map((hp) => ({ comp: this._state(hp.entities?.compressor), load: this._state(hp.entities?.load), label: pumps.length > 1 ? hp.name : this._t("t_compressor") }))
+        : [{ comp: this._state(g.info.compressor), load: this._state(e.compressor_load), label: this._t("t_compressor") }];
+      for (const { comp, load, label } of sources) {
+        const n = Number(comp?.state);
+        if (!comp || !Number.isFinite(n)) continue;
         const unit = comp.attributes.unit_of_measurement || "Hz";
-        const load = this._state(e.compressor_load);
         const pct = Number(load?.state);
         const max = load?.attributes?.frequence_max;
         const value = `${this._fmt(n, 0)} ${unit}${Number.isFinite(pct) ? ` · ${pct} %` : ""}`;
         const title = max ? this._t(load.attributes.source_max === "saisie" ? "c_max_set" : "c_max_seen").replace("{m}", `${this._fmt(max, 0)} ${unit}`) : this._t("c_max_none");
-        chips.push(`<span class="chip" title="${esc(title)}">${svg(ICONS.wave, 16)}${esc(this._t("t_compressor"))} <strong>${esc(value)}</strong></span>`);
+        chips.push(`<span class="chip" title="${esc(title)}">${svg(ICONS.wave, 16)}${esc(label)} <strong>${esc(value)}</strong></span>`);
       }
     }
     for (const [key, entity] of [["avg_24h", e.starts_24h], ["avg_profile", e.starts_profile]]) {
@@ -1254,6 +1395,12 @@ class SplitSchedulerCard extends HTMLElement {
     const e = g?.info?.entities || {};
     const hass = this._hass;
     switch (action) {
+      case "pump":
+        if (this._pumpsClosed.has(value)) this._pumpsClosed.delete(value);
+        else this._pumpsClosed.add(value);
+        this._signature = "";
+        this._render();
+        break;
       case "global-planning": {
         const current = this._state(this._info.global_planning)?.state;
         if (value === current) break;
@@ -1476,6 +1623,8 @@ function compressorMax(hass, g, points) {
 
 /** Écart toléré entre la consigne d'un split et celle du groupe (comme l'intégration). */
 const TOLERANCE = 0.3;
+// Couleurs des courbes des capteurs supplémentaires du groupe (vue détaillée)
+const EXTRA_COLORS = ["#8e24aa", "#00897b", "#6d4c41", "#3949ab", "#c2185b", "#7cb342"];
 
 /** Thermomètre de chaque split : choisi par split, sinon l'ancien capteur unique du groupe. */
 function thermometers(g, states) {
@@ -1614,7 +1763,8 @@ class SplitSchedulerHistory extends HTMLElement {
     const { start, end, now } = this._range();
     const g = this._g;
     const curve = curveEntities(g, this._hass.states);
-    const sensors = [...new Set([g.info.compressor, this._info.outdoor, ...curve.minimal].filter(Boolean))];
+    const extras = (g.sensors || []).filter((id) => id.startsWith("sensor.") || id.startsWith("input_number.") || id.startsWith("number."));
+    const sensors = [...new Set([g.info.compressor, this._info.outdoor, ...curve.minimal, ...extras].filter(Boolean))];
     const base = {
       type: "history/history_during_period",
       start_time: new Date(start).toISOString(),
@@ -1645,6 +1795,15 @@ class SplitSchedulerHistory extends HTMLElement {
         outdoor: this._info.outdoor ? (sensorRows[this._info.outdoor] || []).map((e) => [time(e), num(e.s)]) : [],
         comp: g.info.compressor ? (sensorRows[g.info.compressor] || []).map((e) => [time(e), num(e.s)]) : [],
         profile: profileRows.map((e) => [time(e), { name: e.s, adapted: e.a?.adaptation_exterieure === true }]),
+        // Capteurs supplémentaires du groupe : une courbe chacun, avec sa propre échelle
+        extras: extras.map((eid, i) => ({
+          eid,
+          key: `x:${eid}`,
+          color: EXTRA_COLORS[i % EXTRA_COLORS.length],
+          name: g.sensor_names?.[eid] || this._hass.states[eid]?.attributes?.friendly_name || eid,
+          unit: this._hass.states[eid]?.attributes?.unit_of_measurement || "",
+          points: (sensorRows[eid] || []).map((e) => [time(e), num(e.s)]),
+        })).filter((x) => x.points.some(([, v]) => v !== null)),
       };
     } catch (err) {
       this._data = { error: err?.message || String(err) };
@@ -1661,7 +1820,7 @@ class SplitSchedulerHistory extends HTMLElement {
     if (act === "period") { this._period = value; this._offset = 0; this._load(); }
     if (act === "prev" && this._canGoBack()) { this._offset += 1; this._load(); }
     if (act === "next" && this._offset > 0) { this._offset -= 1; this._load(); }
-    if (act === "toggle") { this._show[value] = !this._show[value]; this._render(); }
+    if (act === "toggle") { this._show[value] = this._show[value] === false; this._render(); }
   }
 
   _profileColor(name) {
@@ -1690,8 +1849,12 @@ class SplitSchedulerHistory extends HTMLElement {
     const multi = g.info.climates.length > 1;
     const toggles = [["setpoint", "set", this._t(multi ? "t_setpoint_group" : "t_setpoint")], ["ambient", "amb", this._t(multi ? "t_ambient_mean" : "t_ambient")],
       ...(d?.dashed?.length ? [["dashed", "set dash", this._t("t_dashed")]] : []), ...(this._info.outdoor ? [["outdoor", "out", this._t("t_outdoor")]] : []),
-      ...(g.info.compressor ? [["load", "run", this._t("t_load")]] : [])]
-      .map(([k, cls, label]) => `<button type="button" class="tog ${this._show[k] ? "on" : ""}" aria-pressed="${this._show[k]}" data-act="toggle" data-value="${k}"><i class="lg ${cls}"></i>${esc(label)}</button>`).join("");
+      ...(g.info.compressor ? [["load", "load", this._t("t_load")]] : []),
+      ...(d?.extras || []).map((x) => [x.key, "xtra", x.name, x.color])]
+      .map(([k, cls, label, color]) => {
+        const on = this._show[k] !== false;
+        return `<button type="button" class="tog ${on ? "on" : ""}" aria-pressed="${on}" data-act="toggle" data-value="${esc(k)}"><i class="lg ${cls}"${color ? ` style="border-color:${color}"` : ""}></i>${esc(label)}</button>`;
+      }).join("");
     const since = d && Number.isFinite(d.first) && d.first > start + 60000
       ? `<span class="muted small">${esc(this._t("available_since").replace("{d}", date(d.first, { day: "numeric", month: "long" })))}</span>` : "";
 
@@ -1753,33 +1916,54 @@ class SplitSchedulerHistory extends HTMLElement {
       const ly = (p) => (LH - (p / 100) * LH).toFixed(1);
       let path = "";
       let prev = null;
-      let firstX = null;
-      let lastX = null;
       for (const [t, v] of [...d.comp, [last, d.comp.at(-1)?.[1] ?? null]]) {
         if (v === null || v === undefined) continue;
         const p = Math.min(100, Math.max(0, (v / cmax) * 100));
         const x = (pct(t) * 10).toFixed(1);
         path += prev === null ? `M${x} ${ly(p)}` : `L${x} ${ly(p)}`;
-        if (firstX === null) firstX = x;
-        lastX = x;
         prev = p;
       }
-      const area = path ? `${path}L${lastX} ${LH}L${firstX} ${LH}Z` : "";
       loadPlot = `
         <div class="chartwrap load">
           <div class="ylabels"><span style="top:0%">100 %</span><span style="top:50%">50 %</span><span style="top:100%">0 %</span></div>
           <div class="lplot" style="height:${LH}px" title="${esc(cknown ? "" : this._t("c_max_none"))}">
             <svg viewBox="0 0 1000 ${LH}" preserveAspectRatio="none" aria-hidden="true">
-              <defs><linearGradient id="lg-load" gradientUnits="userSpaceOnUse" x1="0" x2="0" y1="${LH}" y2="0">
-                <stop offset="0" stop-color="hsl(205,70%,94%)"/><stop offset="1" stop-color="hsl(220,85%,24%)"/>
-              </linearGradient></defs>
               <line class="grid" x1="0" x2="1000" y1="${ly(50)}" y2="${ly(50)}"></line>
-              <path class="load" d="${area}"></path>
               <path class="loadline" d="${path}"></path>
             </svg>
           </div>
         </div>`;
     }
+    // Capteurs supplémentaires : une bande par capteur, échelle propre (min–max de la période)
+    const extraPlots = (d.extras || []).filter((x) => this._show[x.key] !== false).map((x) => {
+      const XH = mobile ? 54 : 64;
+      const vals = x.points.map(([, v]) => v).filter((v) => v !== null);
+      let lo = Math.min(...vals);
+      let hi = Math.max(...vals);
+      if (hi - lo < 1e-9) { lo -= 1; hi += 1; }
+      const pad = (hi - lo) * 0.08;
+      lo -= pad; hi += pad;
+      const yy = (v) => (XH - ((v - lo) / (hi - lo)) * XH).toFixed(1);
+      let path = "";
+      let prev = null;
+      for (const [t, v] of [...x.points, [last, x.points.at(-1)?.[1] ?? null]]) {
+        if (v === null || v === undefined) { prev = null; continue; }
+        path += prev === null ? `M${(pct(t) * 10).toFixed(1)} ${yy(v)}` : `L${(pct(t) * 10).toFixed(1)} ${yy(v)}`;
+        prev = v;
+      }
+      const digits = hi - lo < 10 ? 1 : 0;
+      const unit = x.unit ? ` ${x.unit}` : "";
+      return `
+        <div class="chartwrap load xtra">
+          <div class="ylabels"><span style="top:0%">${esc(this._fmt(hi - pad, digits) + unit)}</span><span style="top:100%">${esc(this._fmt(lo + pad, digits) + unit)}</span></div>
+          <div class="lplot" style="height:${XH}px">
+            <span class="xname" style="color:${x.color}">${esc(x.name)}</span>
+            <svg viewBox="0 0 1000 ${XH}" preserveAspectRatio="none" aria-hidden="true">
+              <path class="xline" style="stroke:${x.color}" d="${path}"><title>${esc(x.name)}</title></path>
+            </svg>
+          </div>
+        </div>`;
+    }).join("");
     const compRow = this._g.info.compressor ? `
       <span class="lab">${esc(this._t("compressor_band"))}</span><div class="cband">${compBlocks}</div>
       <span></span><span class="muted small">${esc(plural(this._t("starts_period"), starts).replace("{r}", this._fmt(starts / hours)))}</span>` : "";
@@ -1854,6 +2038,7 @@ class SplitSchedulerHistory extends HTMLElement {
       </div>
       <div class="chartwrap">${chart}</div>
       ${loadPlot}
+      ${extraPlots}
       <div class="xaxis">${ticks.join("")}</div>
       ${mobile ? `<div class="panel" hidden></div><span class="muted small center">${esc(this._t("touch_hint"))}</span>` : ""}`;
   }
@@ -1892,7 +2077,12 @@ class SplitSchedulerHistory extends HTMLElement {
           const { max, known } = compressorMax(this._hass, this._g, d.comp);
           const share = known ? ` · ${Math.round(Math.min(100, (c / max) * 100))} %` : "";
           return `<span class="r"><span>${esc(this._t("compressor_band"))}</span><strong>${esc(c > 0 ? `${this._t("running")} · ${Math.round(c)} ${unit}${share}` : this._t("stopped"))}</strong></span>`;
-        })() : ""}`;
+        })() : ""}
+        ${(d.extras || []).filter((x) => this._show[x.key] !== false).map((x) => {
+          const v = valueAt(x.points, t);
+          if (v === null || v === undefined) return "";
+          return `<span class="r"><span><i class="lg xtra" style="border-color:${x.color}"></i>${esc(x.name)}</span><strong>${esc(`${this._fmt(v)}${x.unit ? ` ${x.unit}` : ""}`)}</strong></span>`;
+        }).join("")}`;
       const empty = !p && [d.setpoint, d.ambient, d.outdoor, d.comp].every((serie) => valueAt(serie, t) == null);
       const content = empty ? `${html}<span class="muted">${esc(this._t("no_data_at"))}</span>` : html;
       if (mobile && panel) { panel.innerHTML = content; panel.hidden = false; }
@@ -1944,8 +2134,11 @@ const HISTORY_CSS = `
   .cband { position: relative; height: 14px; border-radius: 5px; background: ${mix("var(--primary-text-color)", 7)}; overflow: hidden; }
   .lg.run { height: 8px; width: 22px; border: 0; border-radius: 2px; background: ${SPEED_GRADIENT}; box-shadow: inset 0 0 0 1px rgba(13, 71, 161, .25); }
   .lplot { position: relative; }
-  path.load { fill: url(#lg-load); opacity: .55; stroke: none; }
-  path.loadline { fill: none; stroke: hsl(220, 85%, 30%); stroke-width: 1.8; }
+  path.loadline { fill: none; stroke: hsl(220, 85%, 30%); stroke-width: 1.8; vector-effect: non-scaling-stroke; }
+  path.xline { fill: none; stroke-width: 1.8; vector-effect: non-scaling-stroke; }
+  .lg.load { border-color: hsl(220, 85%, 30%); }
+  .chartwrap.xtra { margin-top: 10px; }
+  .xname { position: absolute; left: 6px; top: 2px; font-size: 11px; font-weight: 500; pointer-events: none; background: color-mix(in srgb, var(--card-background-color, #fff) 75%, transparent); padding: 0 4px; border-radius: 4px; }
   .lplot svg { display: block; width: 100%; height: 100%; overflow: visible; }
   .chartwrap.load { margin-top: 14px; }
   .chartwrap.load .ylabels span { font-size: 10.5px; }
@@ -2114,6 +2307,24 @@ const CARD_CSS = `
   .lg.out { border-color: var(--error-color, #e53935); border-top-style: dotted; }
   .bigrow { align-items: flex-end; gap: 10px; flex-wrap: wrap; }
   .adapted { display: inline-flex; align-items: center; gap: 5px; height: 24px; margin-bottom: 4px; padding: 0 9px; border-radius: 12px; font-size: 12px; font-weight: 500; background: ${mix("var(--info-color, #039be5)", 16)}; color: ${mix("var(--info-color, #039be5)", 70, "var(--primary-text-color)")}; }
+  .banner.err { background: ${mix("var(--error-color, #db4437)", 13)}; }
+  .banner.err svg { flex-shrink: 0; color: var(--error-color, #db4437); }
+  .splitrow.bad { background: ${mix("var(--error-color, #db4437)", 8)}; }
+  .pumps { display: flex; flex-direction: column; gap: 8px; }
+  .hptitle { margin: 4px 4px 0; font-size: 16px; font-weight: 500; }
+  .pump { display: flex; flex-direction: column; gap: 10px; padding: 12px 14px; border-radius: var(--ha-card-border-radius, 12px); background: var(--ha-card-background, var(--card-background-color, #fff)); border: var(--ha-card-border-width, 1px) solid var(--ha-card-border-color, var(--divider-color, #e0e0e0)); }
+  .hphead { display: flex; align-items: center; gap: 10px; width: 100%; padding: 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; min-height: 40px; }
+  .hphead .col { flex: 1; min-width: 0; }
+  .hpmode { padding: 3px 10px; border-radius: 999px; font-size: 12.5px; font-weight: 500; white-space: nowrap; }
+  .gauge { height: 10px; border-radius: 5px; background: var(--secondary-background-color, #eef1f4); overflow: hidden; }
+  .gauge i { display: block; height: 100%; border-radius: 5px; }
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 8px; }
+  .stat { display: flex; flex-direction: column; gap: 2px; }
+  .stat strong { font-size: 16px; font-weight: 500; }
+  .hpsplits { display: flex; flex-wrap: wrap; gap: 6px; }
+  .hpsplit { border: 1px solid var(--divider-color); background: none; color: var(--primary-text-color); border-radius: 8px; padding: 4px 8px; font: inherit; font-size: 13px; cursor: pointer; min-height: 32px; }
+  .hpsplit .small { color: var(--secondary-text-color); }
+  .hpsplit.bad { border-color: var(--error-color, #db4437); color: var(--error-color, #db4437); }
   .banner.info { background: ${mix("var(--info-color, #039be5)", 13)}; }
   .banner.info svg { flex-shrink: 0; color: ${mix("var(--info-color, #039be5)", 80, "var(--primary-text-color)")}; }
   .lg.run { height: 8px; width: 22px; border: 0; border-radius: 2px; background: ${SPEED_GRADIENT}; box-shadow: inset 0 0 0 1px rgba(13, 71, 161, .25); }
@@ -2212,15 +2423,20 @@ class SplitSchedulerCardEditor extends HTMLElement {
     const cfg = this._config;
 
     root.append(this._form(
-      { title: cfg.title || "", show_global_planning: cfg.show_global_planning, show_timeline: cfg.show_timeline },
+      { title: cfg.title || "", show_global_planning: cfg.show_global_planning, show_timeline: cfg.show_timeline, heat_pumps: cfg.heat_pumps || "none" },
       [
         { name: "title", label: "e_title", selector: { text: {} } },
         { name: "show_global_planning", label: "e_global", selector: { boolean: {} } },
         { name: "show_timeline", label: "e_timeline", selector: { boolean: {} } },
+        ...((this._info?.heat_pumps || []).length ? [{
+          name: "heat_pumps", label: "e_heat_pumps",
+          selector: { select: { mode: "dropdown", options: ["none", "groups", "all"].map((v) => ({ value: v, label: I18N[lang(this._hass)].hp_opt[v] })) } },
+        }] : []),
       ],
       (value) => {
         const next = { ...this._config, ...value };
         if (!next.title) delete next.title;
+        if (!next.heat_pumps || next.heat_pumps === "none") delete next.heat_pumps;
         this._emit(next);
       },
     ));

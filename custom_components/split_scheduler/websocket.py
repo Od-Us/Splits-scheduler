@@ -18,7 +18,6 @@ from .const import (
     ATTR_SWING_MODE,
     ATTR_TEMPERATURE,
     CONF_CLIMATES,
-    CONF_COMPRESSOR,
     CONF_PROGRAMS,
     DOMAIN,
     allowed_profiles,
@@ -39,6 +38,13 @@ _GROUP_ENTITIES = {
     "starts_24h": ("sensor", "compressor_starts_24h"),
     "starts_profile": ("sensor", "compressor_starts_profile"),
     "compressor_load": ("sensor", "compressor_load"),
+}
+# Entités de chaque pompe à chaleur
+_PUMP_ENTITIES = {
+    "mode": ("sensor", "pump_mode"),
+    "compressor": ("sensor", "pump_compressor"),
+    "load": ("sensor", "pump_load"),
+    "energy_today": ("sensor", "pump_energy_today"),
 }
 
 
@@ -92,7 +98,9 @@ def ws_info(
                         eid: (registry.async_get(eid).device_id if registry.async_get(eid) else None)
                         for eid in group[CONF_CLIMATES]
                     },
-                    "compressor": group.get(CONF_COMPRESSOR),
+                    # capteur de compresseur principal (pompe de la majorité des splits)
+                    "compressor": (scheduler.pump_sources.get(scheduler.main_pump(gid) or "") or [None])[0],
+                    "heat_pumps": scheduler.group_pumps.get(gid, []),
                     # interrupteur « unité extérieure silencieuse » de chaque split (ou None)
                     "quiet": {
                         eid: scheduler.quiet_switches.get(eid) or quiet_switch(hass, eid)
@@ -104,6 +112,20 @@ def ws_info(
                     },
                 }
                 for gid, group in scheduler.groups.items()
+            ],
+            "heat_pumps": [
+                {
+                    **scheduler.pump_info(hpid),
+                    "entities": {
+                        key: entity(domain, f"{entry_id}_hp_{hpid}_{suffix}")
+                        for key, (domain, suffix) in _PUMP_ENTITIES.items()
+                    },
+                    "devices": {
+                        eid: (registry.async_get(eid).device_id if registry.async_get(eid) else None)
+                        for eid in scheduler.heat_pumps[hpid].get(CONF_CLIMATES, [])
+                    },
+                }
+                for hpid in scheduler.heat_pumps
             ],
             "profiles": [
                 {

@@ -39,7 +39,8 @@ async def test_backfill_from_recorder_history(recorder_mock, hass: HomeAssistant
         async_mock_service(hass, "climate", svc)
     hass.states.async_set(CLIMATE, "heat", ATTRS)
     options = default_options()
-    options["groups"] = {"salon": {"name": "Salon", "climates": [CLIMATE], "compressor": COMP}}
+    options["groups"] = {"salon": {"name": "Salon", "climates": [CLIMATE]}}
+    options["heat_pumps"] = {"pac": {"name": "PAC", "climates": [CLIMATE], "compressors": [COMP]}}
     entry = MockConfigEntry(domain=DOMAIN, options=with_positions(options))
     entry.add_to_hass(hass)
     assert await hass.config_entries.async_setup(entry.entry_id)

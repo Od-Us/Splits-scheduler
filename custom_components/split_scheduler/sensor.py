@@ -6,13 +6,13 @@ from datetime import datetime
 from typing import Any
 
 from homeassistant.components.sensor import SensorDeviceClass, SensorEntity, SensorStateClass
-from homeassistant.const import UnitOfTemperature
+from homeassistant.const import UnitOfEnergy, UnitOfTemperature
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from . import SplitSchedulerConfigEntry
-from .const import CONF_COMPRESSOR, STATUSES
-from .entity import GroupEntity
+from .const import STATUSES
+from .entity import GroupEntity, HeatPumpEntity
 from .scheduler import SplitScheduler
 
 
@@ -29,12 +29,18 @@ async def async_setup_entry(
             NextChangeSensor(scheduler, gid),
             TargetSensor(scheduler, gid),
         ]
-        if scheduler.groups[gid].get(CONF_COMPRESSOR):
+        if scheduler.main_pump(gid):
             entities += [
                 CompressorStartsSensor(scheduler, gid, "compressor_starts_24h", 0),
                 CompressorStartsSensor(scheduler, gid, "compressor_starts_profile", 1),
                 CompressorLoadSensor(scheduler, gid),
             ]
+    for hpid in scheduler.heat_pumps:
+        entities.append(PumpModeSensor(scheduler, hpid))
+        if scheduler.pump_sources.get(hpid):
+            entities += [PumpCompressorSensor(scheduler, hpid), PumpLoadSensor(scheduler, hpid)]
+        if scheduler.energy_today(hpid) is not None:
+            entities.append(PumpEnergySensor(scheduler, hpid))
     async_add_entities(entities)
 
 
@@ -134,10 +140,94 @@ class CompressorStartsSensor(GroupEntity, SensorEntity):
     def extra_state_attributes(self) -> dict[str, Any]:
         average = self._average()
         attrs: dict[str, Any] = {
-            "capteur_compresseur": self.scheduler.groups[self.group_id].get(CONF_COMPRESSOR),
+            "capteurs_compresseur": self.scheduler.pump_sources.get(
+                self.scheduler.main_pump(self.group_id) or "", []
+            ),
         }
         if average is not None:
             attrs.update(demarrages=average.starts, duree_h=average.hours, depuis=average.since.isoformat())
         if self._index == 1:
             attrs["profil"] = self.scheduler.profile_name(self.group_state.active_profile_id)
         return attrs
+
+
+class PumpModeSensor(HeatPumpEntity, SensorEntity):
+    """Côté de fonctionnement de la pompe à chaleur : chauffage, froid, conflit, arrêt."""
+
+    _attr_device_class = SensorDeviceClass.ENUM
+    _attr_options = ["heat", "cool", "conflict", "idle"]
+    _attr_icon = "mdi:heat-pump-outline"
+
+    def __init__(self, scheduler: SplitScheduler, pump_id: str) -> None:
+        super().__init__(scheduler, pump_id, "pump_mode")
+
+    @property
+    def native_value(self) -> str:
+        return self.scheduler.pump_mode(self.pump_id)
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        pump = self.scheduler.heat_pumps[self.pump_id]
+        return {
+            "splits": self.scheduler.pump_modes(self.pump_id),
+            "split_prioritaire": pump.get("priority"),
+            "conflits": self.scheduler.pump_conflicts(self.pump_id),
+            "modele": pump.get("model"),
+        }
+
+
+class PumpCompressorSensor(HeatPumpEntity, SensorEntity):
+    """Fréquence du compresseur : médiane des capteurs des splits reliés."""
+
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_icon = "mdi:heat-pump"
+
+    def __init__(self, scheduler: SplitScheduler, pump_id: str) -> None:
+        super().__init__(scheduler, pump_id, "pump_compressor")
+
+    @property
+    def native_value(self) -> float | None:
+        return self.scheduler.pump_frequency(self.pump_id)
+
+    @property
+    def native_unit_of_measurement(self) -> str | None:
+        return self.scheduler.pump_unit(self.pump_id)
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        return {"capteurs": self.scheduler.pump_sources.get(self.pump_id, [])}
+
+
+class PumpLoadSensor(HeatPumpEntity, SensorEntity):
+    """Charge du compresseur de la pompe à chaleur (%)."""
+
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_native_unit_of_measurement = "%"
+    _attr_icon = "mdi:gauge"
+
+    def __init__(self, scheduler: SplitScheduler, pump_id: str) -> None:
+        super().__init__(scheduler, pump_id, "pump_load")
+
+    @property
+    def native_value(self) -> float | None:
+        return self.scheduler.pump_load(self.pump_id)[0]
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        return self.scheduler.pump_load(self.pump_id)[1]
+
+
+class PumpEnergySensor(HeatPumpEntity, SensorEntity):
+    """Consommation électrique du jour (depuis minuit)."""
+
+    _attr_device_class = SensorDeviceClass.ENERGY
+    _attr_state_class = SensorStateClass.TOTAL_INCREASING
+    _attr_native_unit_of_measurement = UnitOfEnergy.KILO_WATT_HOUR
+    _attr_suggested_display_precision = 2
+
+    def __init__(self, scheduler: SplitScheduler, pump_id: str) -> None:
+        super().__init__(scheduler, pump_id, "pump_energy_today")
+
+    @property
+    def native_value(self) -> float | None:
+        return self.scheduler.energy_today(self.pump_id)

@@ -32,7 +32,8 @@ async def _setup(hass, freezer, start):
     hass.states.async_set(CLIMATE, "heat", ATTRS)
     hass.states.async_set(COMP, "0", {"unit_of_measurement": "Hz"})
     options = default_options()
-    options["groups"] = {"salon": {"name": "Salon", "climates": [CLIMATE], "compressor": COMP}}
+    options["groups"] = {"salon": {"name": "Salon", "climates": [CLIMATE]}}
+    options["heat_pumps"] = {"pac": {"name": "PAC", "climates": [CLIMATE], "compressors": [COMP]}}
     options["plannings"]["normal"]["programs"] = {
         "salon": {str(d): [["06:00", "confort"], ["22:00", "eco"]] for d in range(7)}
     }
@@ -68,7 +69,7 @@ async def test_starts_per_hour(hass: HomeAssistant, freezer):
     assert float(hass.states.get(day).state) == 2.0
     attrs = hass.states.get(day).attributes
     assert attrs["demarrages"] == 4 and attrs["duree_h"] == 2.0
-    assert attrs["capteur_compresseur"] == COMP
+    assert attrs["capteurs_compresseur"] == [COMP]
     assert hass.states.get(prof).attributes["profil"] == "Confort"
 
     # Changement de profil : la moyenne « profil » repart de zéro
@@ -127,11 +128,17 @@ async def test_compressor_sensor_is_detected(hass: HomeAssistant):
     fid = (await flow.async_init(entry.entry_id))["flow_id"]
     await flow.async_configure(fid, {"next_step_id": "groups"})
     result = await flow.async_configure(fid, {"next_step_id": "group_add"})
-    assert "compressor" in result["data_schema"].schema
+    assert "compressor" not in result["data_schema"].schema   # réglé dans les pompes à chaleur
     await flow.async_configure(fid, {"name": "Salon", "climates": [CLIMATE]})
+    await flow.async_configure(fid, {"next_step_id": "init"})
+    await flow.async_configure(fid, {"next_step_id": "heat_pumps"})
+    result = await flow.async_configure(fid, {"next_step_id": "heat_pump_add"})
+    assert result["description_placeholders"]["detected"] == "—"
+    await flow.async_configure(fid, {"name": "PAC", "climates": [CLIMATE]})
     await flow.async_configure(fid, {"next_step_id": "init"})
     await flow.async_configure(fid, {"next_step_id": "save"})
     await hass.async_block_till_done()
-    group = next(iter(entry.options["groups"].values()))
-    assert group["compressor"] == COMP
-
+    pump = next(iter(entry.options["heat_pumps"].values()))
+    assert "compressors" not in pump                         # vide : détection automatique
+    scheduler = entry.runtime_data
+    assert scheduler.pump_sources[next(iter(scheduler.heat_pumps))] == [COMP]

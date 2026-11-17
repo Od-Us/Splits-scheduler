@@ -17,12 +17,76 @@
         "title": "Split scheduler",
         "description": "Choose what to edit. **Remember to “Save and close”**, otherwise changes are lost.",
         "menu_options": {
+          "settings": "General settings",
+          "heat_pumps": "Heat pumps",
           "groups": "Split groups",
-          "profiles": "Operating profiles",
           "plannings": "Planning types",
+          "profiles": "Operating profiles",
           "program_pick": "Weekly program of a group",
-          "save": "Save and close",
-          "settings": "General settings"
+          "save": "Save and close"
+        }
+      },
+      "heat_pumps": {
+        "title": "Heat pumps",
+        "menu_options": {
+          "heat_pump_add": "Add a heat pump",
+          "heat_pump_edit_pick": "Edit a heat pump",
+          "heat_pump_delete": "Delete heat pumps",
+          "init": "Back"
+        }
+      },
+      "heat_pump_add": {
+        "title": "New heat pump",
+        "data": {
+          "name": "Name",
+          "model": "Model (optional)",
+          "climates": "Splits connected to this outdoor unit",
+          "priority": "Priority split (optional)",
+          "compressors": "Compressor sensors (optional)",
+          "compressor_max": "Maximum compressor frequency (optional)",
+          "power_sensor": "Electric power sensor, W (optional)",
+          "energy_sensor": "Energy meter, kWh (optional)"
+        },
+        "data_description": {
+          "priority": "Outdoor unit setting (\"priority room\"): its heating/cooling mode wins, splits in the opposite mode stay idle. Empty: the first split started decides.",
+          "compressors": "Empty: Faikout \"Compressor\" sensors detected on the splits ({detected}). Several sensors measure the same compressor: their median is used.",
+          "compressor_max": "In the sensor unit (Hz or rpm), from the outdoor unit service manual. Empty: the 3rd highest hour of the last 30 days (an isolated peak is ignored). Used to compute the compressor load (%).",
+          "power_sensor": "Smart plug or clamp on the outdoor unit supply. Without an energy meter, today's consumption is integrated from the power.",
+          "energy_sensor": "Cumulative meter: today's consumption is the difference since midnight."
+        },
+        "description": "A heat pump (outdoor unit) feeds several splits through **one compressor**. A split can belong to only one heat pump. Splits of one group may depend on different pumps."
+      },
+      "heat_pump_edit": {
+        "title": "Edit the heat pump",
+        "data": {
+          "name": "Name",
+          "model": "Model (optional)",
+          "climates": "Splits connected to this outdoor unit",
+          "priority": "Priority split (optional)",
+          "compressors": "Compressor sensors (optional)",
+          "compressor_max": "Maximum compressor frequency (optional)",
+          "power_sensor": "Electric power sensor, W (optional)",
+          "energy_sensor": "Energy meter, kWh (optional)"
+        },
+        "data_description": {
+          "priority": "Outdoor unit setting (\"priority room\"): its heating/cooling mode wins, splits in the opposite mode stay idle. Empty: the first split started decides.",
+          "compressors": "Empty: Faikout \"Compressor\" sensors detected on the splits ({detected}). Several sensors measure the same compressor: their median is used.",
+          "compressor_max": "In the sensor unit (Hz or rpm), from the outdoor unit service manual. Empty: the 3rd highest hour of the last 30 days (an isolated peak is ignored). Used to compute the compressor load (%).",
+          "power_sensor": "Smart plug or clamp on the outdoor unit supply. Without an energy meter, today's consumption is integrated from the power.",
+          "energy_sensor": "Cumulative meter: today's consumption is the difference since midnight."
+        },
+        "description": "A heat pump (outdoor unit) feeds several splits through **one compressor**. A split can belong to only one heat pump. Splits of one group may depend on different pumps."
+      },
+      "heat_pump_edit_pick": {
+        "title": "Edit a heat pump",
+        "data": {
+          "heat_pump": "Heat pump"
+        }
+      },
+      "heat_pump_delete": {
+        "title": "Delete heat pumps",
+        "data": {
+          "heat_pumps": "Heat pumps to delete"
         }
       },
       "groups": {
@@ -38,15 +102,9 @@
         "title": "New group",
         "data": {
           "name": "Name",
-          "climates": "Splits (thermostats)",
-          "compressor": "Compressor sensor (optional)",
-          "compressor_max": "Maximum compressor frequency (optional)"
+          "climates": "Splits (thermostats)"
         },
-        "data_description": {
-          "compressor": "Empty: Faikout's “Compressor” sensor is detected automatically. Used to count compressor starts.",
-          "compressor_max": "In the sensor's unit (Hz or rpm), from the outdoor unit service manual. Empty: the 3rd highest hour of the last 30 days (an isolated spike is ignored). Used for the compressor load (%)."
-        },
-        "description": "**Caution:** all splits of a group are assumed to be connected to the **same compressor** (same outdoor unit). If not, create one group per outdoor unit, otherwise compressor start counts will be wrong."
+        "description": "Splits of a group follow the same program. Compressor, priority split and meters are set in **Heat pumps**."
       },
       "group_edit_pick": {
         "title": "Edit a group",
@@ -58,15 +116,9 @@
         "title": "Edit group",
         "data": {
           "name": "Name",
-          "climates": "Splits (thermostats)",
-          "compressor": "Compressor sensor (optional)",
-          "compressor_max": "Maximum compressor frequency (optional)"
+          "climates": "Splits (thermostats)"
         },
-        "data_description": {
-          "compressor": "Empty: Faikout's “Compressor” sensor is detected automatically. Used to count compressor starts.",
-          "compressor_max": "In the sensor's unit (Hz or rpm), from the outdoor unit service manual. Empty: the 3rd highest hour of the last 30 days (an isolated spike is ignored). Used for the compressor load (%)."
-        },
-        "description": "**Caution:** all splits of a group are assumed to be connected to the **same compressor** (same outdoor unit). If not, create one group per outdoor unit, otherwise compressor start counts will be wrong."
+        "description": "Splits of a group follow the same program. Compressor, priority split and meters are set in **Heat pumps**."
       },
       "group_delete": {
         "title": "Delete groups",
@@ -203,7 +255,7 @@
       },
       "program_week": {
         "title": "Weekly program",
-        "description": "**{group}** — planning **{planning}**\n\nChoose a day to add, edit or delete its profile changes. An empty day keeps the previous day's last profile.",
+        "description": "**{group}** — planning **{planning}**\n\nChoose a day to add, edit or delete its profile changes. An empty day keeps the previous day's last profile.{warnings}",
         "menu_options": {
           "day_mon": "Monday",
           "day_tue": "Tuesday",
@@ -299,7 +351,9 @@
       "allowed_required": "Tick at least one profile.",
       "allowed_in_use": "Profile used in this planning's program: {used}. Remove it from those lines first.",
       "copy_target_required": "Choose at least one planning and one group (other than the original schedule).",
-      "copy_not_allowed": "Cannot copy: some profiles of this schedule are not allowed in these plannings: {refused}. Allow them in the planning type, or remove these plannings."
+      "copy_not_allowed": "Cannot copy: some profiles of this schedule are not allowed in these plannings: {refused}. Allow them in the planning type, or remove these plannings.",
+      "climate_other_pump": "One of these splits already belongs to another heat pump.",
+      "priority_not_member": "The priority split must be one of this heat pump's splits."
     }
   },
   "selector": {
@@ -378,6 +432,24 @@
       },
       "compressor_load": {
         "name": "Compressor load"
+      },
+      "pump_mode": {
+        "name": "Mode",
+        "state": {
+          "heat": "Heating",
+          "cool": "Cooling",
+          "conflict": "Mode conflict",
+          "idle": "Off"
+        }
+      },
+      "pump_compressor": {
+        "name": "Compressor"
+      },
+      "pump_load": {
+        "name": "Compressor load"
+      },
+      "pump_energy_today": {
+        "name": "Energy today"
       }
     }
   }

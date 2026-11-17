@@ -21,6 +21,12 @@ from .const import (
     CONF_POS,
     CONF_PROFILES,
     DOMAIN,
+    CONF_CLIMATES,
+    CONF_COMPRESSOR,
+    CONF_COMPRESSOR_MAX,
+    CONF_COMPRESSORS,
+    CONF_HEAT_PUMPS,
+    MIGRATION_HEAT_PUMPS,
     MIGRATION_REMOVE_PRESETS,
     MIGRATION_SUMMER_PROFILES,
     PLATFORMS,
@@ -56,6 +62,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: SplitSchedulerConfigEntr
     """Met en place l'intégration."""
     _add_summer_profiles(hass, entry)
     _remove_presets(hass, entry)
+    _create_heat_pumps(hass, entry)
     scheduler = SplitScheduler(hass, entry)
     await scheduler.async_load()
     entry.runtime_data = scheduler
@@ -127,4 +134,37 @@ def _remove_presets(hass: HomeAssistant, entry: ConfigEntry) -> None:
         for pid, p in options.get(CONF_PROFILES, {}).items()
     }
     options[CONF_MIGRATIONS] = [*migrations, MIGRATION_REMOVE_PRESETS]
+    hass.config_entries.async_update_entry(entry, options=options)
+
+
+def _create_heat_pumps(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Reprend une fois le capteur du compresseur réglé par groupe : une pompe à chaleur
+    regroupant les splits de ces groupes (cas d'une seule unité extérieure ; à répartir
+    ensuite en plusieurs pompes si besoin)."""
+    migrations = list(entry.options.get(CONF_MIGRATIONS, []))
+    if MIGRATION_HEAT_PUMPS in migrations:
+        return
+    options = {**entry.options}
+    groups = {gid: dict(g) for gid, g in options.get(CONF_GROUPS, {}).items()}
+    heat_pumps = dict(options.get(CONF_HEAT_PUMPS, {}))
+    sensors: list[str] = []
+    climates: list[str] = []
+    maximum = None
+    for group in groups.values():
+        sensor = group.pop(CONF_COMPRESSOR, None)
+        group_max = group.pop(CONF_COMPRESSOR_MAX, None)
+        if not sensor:
+            continue
+        if sensor not in sensors:
+            sensors.append(sensor)
+        climates += [eid for eid in group.get(CONF_CLIMATES, []) if eid not in climates]
+        maximum = maximum or group_max
+    if sensors and not heat_pumps:
+        pump = {"name": "Pompe à chaleur", CONF_CLIMATES: climates, CONF_COMPRESSORS: sensors}
+        if maximum:
+            pump[CONF_COMPRESSOR_MAX] = maximum
+        heat_pumps["pac"] = pump
+    options[CONF_GROUPS] = groups
+    options[CONF_HEAT_PUMPS] = heat_pumps
+    options[CONF_MIGRATIONS] = [*migrations, MIGRATION_HEAT_PUMPS]
     hass.config_entries.async_update_entry(entry, options=options)

@@ -64,9 +64,14 @@ Plannings fournis : *Normal*, *Vacances*, *Absence prolongée* (vides au départ
 
 ## Configuration
 
-Sur la carte de l'intégration, cliquer sur **Configurer**. Un menu propose :
+Sur la carte de l'intégration, cliquer sur **Configurer**. Le menu propose, dans
+cet ordre : *Réglages généraux*, *Pompes à chaleur*, *Groupes de splits*,
+*Types de planning*, *Profils*, *Programme hebdomadaire*, *Enregistrer et fermer*.
 
-- **Groupes de splits** : nom et thermostats du groupe.
+- **Pompes à chaleur** : voir [Pompes à chaleur](#pompes-à-chaleur) ci-dessous.
+- **Groupes de splits** : nom et thermostats du groupe. Les splits d'un groupe
+  suivent le même programme ; ils peuvent dépendre de pompes à chaleur
+  différentes.
 - **Unité extérieure silencieuse** 🤫 (dans chaque profil) : *Activée*,
   *Désactivée* ou vide (ne pas modifier). Réglée par l'interrupteur « Quiet
   outdoor » que Faikout publie dans Home Assistant (option **« HA switches »**
@@ -104,7 +109,11 @@ Sur la carte de l'intégration, cliquer sur **Configurer**. Un menu propose :
   La semaine s'affiche jour par jour avec le résumé des changements ; un jour
   vide indique le profil hérité (« Aucun changement — Eco depuis samedi 23:00 »).
   - Dans un jour : choisir une ligne pour la **modifier** (heure, profil) ou la
-    **supprimer**, ou **ajouter** une ligne. Les lignes sont toujours triées par
+    **supprimer**, ou **ajouter** une ligne.
+  - **Avertissement pompe à chaleur** : si un split du groupe partage sa pompe
+    à chaleur avec un split prioritaire d'un autre groupe, la semaine affiche
+    les plages où les deux programmes s'opposent (« Lun 14:00–16:00 :
+    chauffage ici, froid pour Séjour… ») : ces splits resteraient en veille. Les lignes sont toujours triées par
     heure : une ligne ajoutée à 12:00 s'insère d'elle-même entre 08:30 et 17:00.
     Chaque profil proposé affiche ses réglages (« Confort — Chauffage · 20 °C »).
   - *Copier ce jour vers d'autres jours*, *Vider la journée*.
@@ -265,6 +274,9 @@ Programmation des splits*. Tout se règle dans son éditeur visuel :
     est un interrupteur, affiché seulement si un split du groupe a
     l'interrupteur Faikout ; un appui ne vaut pas dérogation, affiche aussitôt
     le nouvel état puis celui des splits, et signale un split qui ne répond pas ;
+  - **compresseur** : fréquence et charge (une pastille par pompe à chaleur
+    si les splits du groupe en utilisent plusieurs : « PAC A 42 Hz · 52 % »),
+    démarrages par heure ;
   - **frise du compresseur** (facultative) : sous la frise des profils, une
     bande fine montre les périodes de marche du compresseur aujourd'hui,
     **colorées selon sa vitesse** (du blanc, vitesse faible, au bleu foncé),
@@ -281,6 +293,13 @@ Programmation des splits*. Tout se règle dans son éditeur visuel :
     les pointillés) et donne au curseur les valeurs de chaque split en
     dérogation.
 
+**Panneaux des pompes à chaleur** (option de la carte : *Aucun*, *Pompes des
+groupes affichés* ou *Toutes les pompes*) : un panneau repliable par pompe, avec
+son mode (chauffage, froid, conflit, arrêt), une jauge de charge, la fréquence
+du compresseur, la puissance, la consommation du jour, la température
+extérieure (capteur Faikout d'un de ses splits), le split prioritaire (★) et le
+mode de chaque split (un clic ouvre son thermostat).
+
 Un clic sur le **nom du groupe** affiche ses splits (mode, consigne, température
 mesurée, ou « injoignable ») ; un clic sur un split ouvre la fenêtre de son
 thermostat.
@@ -289,6 +308,8 @@ Un clic sur les **frises ou les courbes** ouvre une **vue détaillée** : jour,
 3 jours ou semaine, flèches pour remonter dans le temps, frise des profils
 réellement appliqués (dérogations comprises), marches du compresseur et nombre
 de démarrages, courbes ambiance / consigne / extérieur à afficher ou masquer,
+charge du compresseur (simple ligne), et une bande par **capteur
+supplémentaire** du groupe (humidité, CO₂…) avec sa propre échelle et son unité,
 curseur donnant toutes les valeurs à l'instant choisi. Plein écran sur
 téléphone. La navigation est limitée à l'historique détaillé de Home Assistant
 (10 jours par défaut, réglage `purge_keep_days` de l'enregistreur).
@@ -387,18 +408,52 @@ Sur une installation existante, *Confort été* et *Eco été* sont ajoutés une
 seule fois à la mise à jour (sauf si un profil du même nom existe déjà) ; un
 profil supprimé ensuite n'est pas recréé.
 
+## Pompes à chaleur
+
+Une pompe à chaleur (unité extérieure) alimente plusieurs splits par **un même
+compresseur**. Menu **Pompes à chaleur** : ajouter, modifier, supprimer.
+
+| Champ | Rôle |
+|---|---|
+| Nom, modèle | affichés sur la carte et dans l'appareil créé |
+| Splits reliés | un split n'appartient qu'à une seule pompe |
+| Split prioritaire (facultatif) | réglage « pièce prioritaire » de l'unité extérieure : son mode chaud/froid s'impose |
+| Capteurs du compresseur (facultatif) | vide : capteurs « Compressor » de Faikout détectés sur les splits ; leur **médiane** est retenue |
+| Fréquence maximale (facultatif) | voir *Charge du compresseur* |
+| Puissance (W), compteur d'énergie (kWh) (facultatifs) | consommation du jour |
+
+**Conflits de mode** : une unité extérieure ne peut pas chauffer et refroidir
+en même temps. Un split en chauffage alors que le split prioritaire est en froid
+ou en déshumidification (ou l'inverse) reste en veille : la carte affiche une
+alerte sur le groupe et sur le split. Ventilation, arrêt et automatique ne
+comptent pas. Sans split prioritaire, ou s'il est en ventilation ou à l'arrêt,
+tous les splits en chauffage et en froid sont signalés dès que les deux modes
+coexistent. Attribut `conflits_mode` du sélecteur de profil de chaque groupe.
+
+**Consommation du jour** : avec un compteur d'énergie, différence depuis minuit
+(une remise à zéro du compteur est gérée) ; sinon intégration de la puissance
+minute par minute. Remise à zéro à minuit.
+
+Entités de chaque pompe (appareil « <nom de la pompe> ») :
+
+| Entité | Valeur |
+|---|---|
+| `sensor.<pompe>_mode` | `heat`, `cool`, `conflict` ou `idle` ; attributs `splits` (mode de chaque split), `split_prioritaire`, `conflits` |
+| `sensor.<pompe>_compresseur` | fréquence (médiane des capteurs) |
+| `sensor.<pompe>_charge_du_compresseur` | charge en % |
+| `sensor.<pompe>_consommation_du_jour` | kWh depuis minuit (si puissance ou compteur) |
+
+**Mise à jour** : le capteur de compresseur et la fréquence maximale réglés
+auparavant dans les groupes sont repris une fois dans une pompe « Pompe à
+chaleur » regroupant les splits de ces groupes. Si vous avez plusieurs unités
+extérieures, répartissez ensuite les splits en plusieurs pompes.
+
 ## Démarrages du compresseur
 
-> **Précaution :** tous les splits d'un groupe sont considérés comme reliés au
-> **même compresseur** (même unité extérieure). Si ce n'est pas le cas, créez un
-> groupe par unité extérieure : sinon les démarrages comptés seront faux.
-
-Dans la configuration d'un groupe, le champ **Capteur du compresseur** indique le
-capteur qui donne la fréquence (ou la vitesse) du compresseur. Laissé vide, il
-est détecté automatiquement : c'est le capteur « Compressor » publié par
-Faikout sur le même appareil que l'un des splits. Un démarrage est compté à
-chaque passage de 0 à une valeur positive ; les valeurs indisponibles sont
-ignorées.
+Les démarrages sont comptés pour chaque groupe sur sa **pompe principale** (celle
+de la majorité de ses splits), à partir de la fréquence médiane de son
+compresseur. Un démarrage est compté à chaque passage de 0 à une valeur
+positive ; les valeurs indisponibles sont ignorées.
 
 Deux capteurs sont alors créés pour le groupe (en démarrages par heure) :
 
@@ -420,7 +475,7 @@ Confort 1,5 dém./h ».
 
 ### Charge du compresseur (%)
 
-Dans la configuration d'un groupe, **Fréquence maximale du compresseur**
+Dans la configuration d'une pompe à chaleur, **Fréquence maximale du compresseur**
 (facultatif) se saisit **dans l'unité du capteur** : Hz ou tours/min selon le
 réglage de Faikout (`ha.comprpm`), d'après le manuel de service de l'unité
 extérieure. Laissée vide, elle est **observée** : à partir des maxima horaires des
@@ -430,16 +485,16 @@ les valeurs nulles ou impossibles (plus de 250 Hz ou 15 000 tr/min) sont
 fausse pas la référence. Recalculée toutes les 6 heures ; inconnue tant qu'il
 n'y a pas 3 heures de marche.
 
-Le capteur `sensor.<groupe>_charge_du_compresseur` donne la fréquence actuelle en
+Le capteur `sensor.<pompe>_charge_du_compresseur` (et, pour la pompe principale
+de chaque groupe, `sensor.<groupe>_charge_du_compresseur`) donne la fréquence actuelle en
 % de ce maximum (borné à 100 %), avec les attributs `frequence`,
 `frequence_max`, `source_max` (`saisie` ou `observee_30j`) et `unite`.
 
 Sur la carte, l'option **Fréquence actuelle et charge** affiche « Compresseur
 26 Hz · 35 % ». La frise du
 compresseur est colorée selon la vitesse, et la vue détaillée ajoute sous les
-courbes une courbe continue **Charge du compresseur** (0 à 100 %, remplissage
-du blanc au bleu foncé), masquable, et la charge dans l'infobulle. En multi-split, c'est la
-charge de l'unité extérieure commune.
+courbes une ligne **Charge du compresseur** (0 à 100 %), masquable, et la charge
+dans l'infobulle.
 
 ## Splits Faikout (MQTT)
 

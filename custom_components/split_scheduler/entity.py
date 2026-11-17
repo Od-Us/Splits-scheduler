@@ -45,3 +45,19 @@ class GroupEntity(SchedulerEntity):
     @property
     def group_state(self):
         return self.scheduler.states[self.group_id]
+
+
+class HeatPumpEntity(SchedulerEntity):
+    """Entité rattachée à une pompe à chaleur (un appareil par unité extérieure)."""
+
+    def __init__(self, scheduler: SplitScheduler, pump_id: str, key: str) -> None:
+        super().__init__(scheduler, key)
+        self.pump_id = pump_id
+        entry_id = scheduler.entry.entry_id
+        pump = scheduler.heat_pumps[pump_id]
+        self._attr_unique_id = f"{entry_id}_hp_{pump_id}_{key}"
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, f"{entry_id}_hp_{pump_id}")},
+            name=pump["name"],
+            model=pump.get("model") or "Pompe à chaleur",
+        )
