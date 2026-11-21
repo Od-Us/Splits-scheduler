@@ -315,7 +315,14 @@ réellement appliqués (dérogations comprises), marches du compresseur et nombr
 de démarrages, courbes ambiance / consigne / extérieur à afficher ou masquer,
 charge du compresseur (simple ligne ; comme la frise, elle suit la **médiane** des capteurs du compresseur de la pompe principale), et une bande par **capteur
 supplémentaire** du groupe (humidité, CO₂…) avec sa propre échelle et son unité,
-curseur donnant toutes les valeurs à l'instant choisi. Plein écran sur
+curseur donnant toutes les valeurs à l'instant choisi. Par défaut, seules les **températures** sont
+affichées (consigne, ambiance, extérieur, dérogations, et les capteurs
+supplémentaires en °C) ; la charge du compresseur et les autres capteurs
+s'activent d'un clic. Le bouton **Lissage 5 min** trace les courbes mesurées
+(ambiance, extérieur, capteurs supplémentaires) en **moyenne glissante sur 5
+minutes**, pour gommer les dents de scie des thermomètres ; les consignes
+restent en escalier. L'option de la carte *Lisser les courbes* l'active par
+défaut, et l'applique aussi aux courbes du jour de la carte. Plein écran sur
 téléphone. La navigation est limitée à l'historique détaillé de Home Assistant
 (10 jours par défaut, réglage `purge_keep_days` de l'enregistreur).
 

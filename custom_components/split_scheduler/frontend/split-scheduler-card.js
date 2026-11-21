@@ -20,12 +20,13 @@
  *       compressor: [avg_24h, avg_profile]   # démarrages du compresseur par heure
  *       compressor_timeline: true            # frise des marches du compresseur
  *       chart: [ambient, setpoint, outdoor]  # courbes du jour (au choix)
+ *   smooth: true                     # courbes lissées (moyenne glissante sur 5 minutes)
  *   heat_pumps: groups               # panneaux des pompes à chaleur : none | groups | all
  *   heat_pump_sensors:               # capteurs supplémentaires d'un panneau (facultatif)
  *     <id de la pompe>: { sensors: [sensor.x], names: { sensor.x: Libellé } }
  */
 
-const CARD_VERSION = "1.16.2";
+const CARD_VERSION = "1.17.0";
 const ICON_URL = new URL("icon.png", import.meta.url).href;
 
 const GROUP_DEFAULTS = {
@@ -163,6 +164,8 @@ const I18N = {
     hp_conflict_short: "en veille : conflit avec {p}",
     hp_conflict_short_free: "conflit de mode sur {h}",
     e_heat_pumps: "Panneaux des pompes à chaleur",
+    e_smooth: "Lisser les courbes (moyenne glissante sur 5 minutes)",
+    t_smooth: "Lissage 5 min",
     e_hp_sensors_title: "Capteurs supplémentaires des pompes à chaleur",
     e_hp_sensors: "Capteurs affichés dans le panneau",
     e_hp_names: "Libellés (vide = nom du capteur)",
@@ -331,6 +334,8 @@ const I18N = {
     hp_conflict_short: "idle: conflict with {p}",
     hp_conflict_short_free: "mode conflict on {h}",
     e_heat_pumps: "Heat pump panels",
+    e_smooth: "Smooth the curves (5-minute moving average)",
+    t_smooth: "5-min smoothing",
     e_hp_sensors_title: "Heat pump extra sensors",
     e_hp_sensors: "Sensors shown in the panel",
     e_hp_names: "Labels (empty = sensor name)",
@@ -1200,10 +1205,11 @@ class SplitSchedulerCard extends HTMLElement {
     const series = [];
     const withLive = (points, v) => [...(points || []), [now, v ?? null]];
     if (mode.includes("setpoint")) series.push({ points: withLive(curves?.setpoint, live.group), cls: "set", step: true });
-    if (mode.includes("ambient")) series.push({ points: withLive(curves?.ambient, live.mean), cls: "amb", step: false });
+    const smooth = (points) => (this._config.smooth ? smoothSeries(points, now) : points);
+    if (mode.includes("ambient")) series.push({ points: smooth(withLive(curves?.ambient, live.mean)), cls: "amb", step: false });
     if (mode.includes("outdoor")) {
       const v = history?.outdoorLive?.();
-      series.push({ points: [...(history?.outdoor || []), ...(v !== undefined && v !== null ? [[now, v]] : [])], cls: "out", step: false });
+      series.push({ points: smooth([...(history?.outdoor || []), ...(v !== undefined && v !== null ? [[now, v]] : [])]), cls: "out", step: false });
     }
     // Pointillés : splits en dérogation (dans la journée ou maintenant)
     const dashed = [];
@@ -1471,7 +1477,7 @@ class SplitSchedulerCard extends HTMLElement {
         this._openSplit(g, value);
         break;
       case "detail":
-        SplitSchedulerHistory.open(this._hass, this._info, g);
+        SplitSchedulerHistory.open(this._hass, this._info, g, { smooth: this._config.smooth === true });
         break;
       case "expand":
         if (this._expanded.has(group)) this._expanded.delete(group);
@@ -1614,6 +1620,38 @@ function valueAt(series, t) {
   return found;
 }
 
+const SMOOTH_MINUTES = 5;
+
+/** Moyenne glissante centrée sur 5 minutes (valeurs relevées chaque minute), pour éviter
+ * l'aspect en dents de scie des thermomètres au pas de 0,1 °C. Un trou (null) reste un trou. */
+function smoothSeries(points, until) {
+  const src = (points || []).filter(([t]) => Number.isFinite(t));
+  if (src.length < 2) return points || [];
+  const step = 60000;
+  const t0 = Math.ceil(src[0][0] / step) * step;
+  const t1 = Math.min(until ?? src.at(-1)[0], Date.now());
+  if (t1 <= t0) return points;
+  const samples = [];
+  let k = 0;
+  for (let t = t0; t <= t1; t += step) {
+    while (k + 1 < src.length && src[k + 1][0] <= t) k++;
+    const v = src[k][1];
+    samples.push([t, v === null || v === undefined ? null : Number(v)]);
+  }
+  const half = Math.floor(SMOOTH_MINUTES / 2);
+  const out = [];
+  for (let i = 0; i < samples.length; i++) {
+    if (samples[i][1] === null) { out.push([samples[i][0], null]); continue; }
+    let sum = 0;
+    let n = 0;
+    for (let j = Math.max(0, i - half); j <= Math.min(samples.length - 1, i + half); j++) {
+      if (samples[j][1] !== null) { sum += samples[j][1]; n++; }
+    }
+    out.push([samples[i][0], Math.round((sum / n) * 100) / 100]);
+  }
+  return out;
+}
+
 /** Couleur d'une vitesse de compresseur : blanc bleuté (faible) → bleu foncé (élevée). */
 function speedColor(value, max) {
   const p = max > 0 ? Math.min(Math.max(value / max, 0), 1) : 0.5;
@@ -1746,11 +1784,12 @@ function sampleAt(climates, stateOf, thermoOf, group) {
 }
 
 class SplitSchedulerHistory extends HTMLElement {
-  static open(hass, info, group) {
+  static open(hass, info, group, options = {}) {
     const dialog = document.createElement("split-scheduler-history");
     dialog._hass = hass;
     dialog._info = info;
     dialog._g = group;
+    dialog._show.smooth = options.smooth === true;
     document.body.append(dialog);
     return dialog;
   }
@@ -1760,7 +1799,8 @@ class SplitSchedulerHistory extends HTMLElement {
     this.attachShadow({ mode: "open" });
     this._period = "day";
     this._offset = 0;
-    this._show = { ambient: true, setpoint: true, outdoor: true, dashed: true, load: true };
+    // Par défaut, seules les températures sont affichées (charge et autres capteurs : à activer)
+    this._show = { ambient: true, setpoint: true, outdoor: true, dashed: true, load: false, smooth: false };
     this._data = null;
     this._cursor = null;
     this._onKey = (ev) => { if (ev.key === "Escape") this.close(); };
@@ -1870,7 +1910,22 @@ class SplitSchedulerHistory extends HTMLElement {
     if (act === "period") { this._period = value; this._offset = 0; this._load(); }
     if (act === "prev" && this._canGoBack()) { this._offset += 1; this._load(); }
     if (act === "next" && this._offset > 0) { this._offset -= 1; this._load(); }
-    if (act === "toggle") { this._show[value] = this._show[value] === false; this._render(); }
+    if (act === "toggle") { this._show[value] = !this._isShown(value); this._render(); }
+  }
+
+  /** Courbe affichée ? Capteurs supplémentaires : oui par défaut seulement pour une température. */
+  _isShown(key) {
+    if (key in this._show) return this._show[key] === true;
+    const extra = (this._data?.extras || []).find((x) => x.key === key);
+    return !!extra && /°[CF]$/.test(extra.unit || "");
+  }
+
+  /** Série lissée (moyenne glissante 5 min) si l'option est active, mise en cache. */
+  _smoothed(points) {
+    if (!this._show.smooth || !points?.length) return points;
+    this._smoothCache ??= new WeakMap();
+    if (!this._smoothCache.has(points)) this._smoothCache.set(points, smoothSeries(points, Math.min(this._range().end, Date.now())));
+    return this._smoothCache.get(points);
   }
 
   _profileColor(name) {
@@ -1900,9 +1955,10 @@ class SplitSchedulerHistory extends HTMLElement {
     const toggles = [["setpoint", "set", this._t(multi ? "t_setpoint_group" : "t_setpoint")], ["ambient", "amb", this._t(multi ? "t_ambient_mean" : "t_ambient")],
       ...(d?.dashed?.length ? [["dashed", "set dash", this._t("t_dashed")]] : []), ...(this._info.outdoor ? [["outdoor", "out", this._t("t_outdoor")]] : []),
       ...(g.info.compressor ? [["load", "load", this._t("t_load")]] : []),
-      ...(d?.extras || []).map((x) => [x.key, "xtra", x.name, x.color])]
+      ...(d?.extras || []).map((x) => [x.key, "xtra", x.name, x.color]),
+      ...(d && !d.error ? [["smooth", "smooth", this._t("t_smooth")]] : [])]
       .map(([k, cls, label, color]) => {
-        const on = this._show[k] !== false;
+        const on = this._isShown(k);
         return `<button type="button" class="tog ${on ? "on" : ""}" aria-pressed="${on}" data-act="toggle" data-value="${esc(k)}"><i class="lg ${cls}"${color ? ` style="border-color:${color}"` : ""}></i>${esc(label)}</button>`;
       }).join("");
     const since = d && Number.isFinite(d.first) && d.first > start + 60000
@@ -1985,9 +2041,10 @@ class SplitSchedulerHistory extends HTMLElement {
         </div>`;
     }
     // Capteurs supplémentaires : une bande par capteur, échelle propre (min–max de la période)
-    const extraPlots = (d.extras || []).filter((x) => this._show[x.key] !== false).map((x) => {
+    const extraPlots = (d.extras || []).filter((x) => this._isShown(x.key)).map((x) => {
       const XH = mobile ? 54 : 64;
-      const vals = x.points.map(([, v]) => v).filter((v) => v !== null);
+      const points = this._smoothed(x.points);
+      const vals = points.map(([, v]) => v).filter((v) => v !== null);
       let lo = Math.min(...vals);
       let hi = Math.max(...vals);
       if (hi - lo < 1e-9) { lo -= 1; hi += 1; }
@@ -1996,7 +2053,7 @@ class SplitSchedulerHistory extends HTMLElement {
       const yy = (v) => (XH - ((v - lo) / (hi - lo)) * XH).toFixed(1);
       let path = "";
       let prev = null;
-      for (const [t, v] of [...x.points, [last, x.points.at(-1)?.[1] ?? null]]) {
+      for (const [t, v] of [...points, [last, points.at(-1)?.[1] ?? null]]) {
         if (v === null || v === undefined) { prev = null; continue; }
         path += prev === null ? `M${(pct(t) * 10).toFixed(1)} ${yy(v)}` : `L${(pct(t) * 10).toFixed(1)} ${yy(v)}`;
         prev = v;
@@ -2021,11 +2078,11 @@ class SplitSchedulerHistory extends HTMLElement {
     // Courbes
     const H = mobile ? 250 : 360;
     const visible = [["ambient", "amb", false], ["setpoint", "set", true], ["outdoor", "out", false]].filter(([k]) => this._show[k] && d[k]?.length)
-      .map(([k, cls, step]) => ({ points: d[k], cls, step }));
+      .map(([k, cls, step]) => ({ points: step ? d[k] : this._smoothed(d[k]), cls, step }));
     if (this._show.dashed) {
       for (const x of d.dashed || []) {
         if (this._show.setpoint) visible.push({ points: x.setpoint, cls: "set dash", step: true, name: x.name });
-        if (this._show.ambient) visible.push({ points: x.ambient, cls: "amb dash", step: false, name: x.name });
+        if (this._show.ambient) visible.push({ points: this._smoothed(x.ambient), cls: "amb dash", step: false, name: x.name });
       }
     }
     const values = visible.flatMap((sr) => sr.points.map(([, v]) => v)).filter((v) => v !== null && v !== undefined);
@@ -2114,11 +2171,11 @@ class SplitSchedulerHistory extends HTMLElement {
         <strong class="h">${esc(time(t, { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }))}</strong>
         ${p ? `<span class="r"><span><i class="dot" style="background:${this._profileColor(p.name)}"></i>${esc(p.name)}${p.adapted ? ` <em>(${esc(this._t("adapted_short"))})</em>` : ""}</span></span>` : ""}
         ${this._show.setpoint ? row("set", this._t(this._g.info.climates.length > 1 ? "t_setpoint_group" : "t_setpoint"), valueAt(d.setpoint, t)) : ""}
-        ${this._show.ambient ? row("amb", this._t(this._g.info.climates.length > 1 ? "t_ambient_mean" : "t_ambient"), valueAt(d.ambient, t)) : ""}
-        ${this._show.outdoor && this._info.outdoor ? row("out", this._t("t_outdoor"), valueAt(d.outdoor, t)) : ""}
+        ${this._show.ambient ? row("amb", this._t(this._g.info.climates.length > 1 ? "t_ambient_mean" : "t_ambient"), valueAt(this._smoothed(d.ambient), t)) : ""}
+        ${this._show.outdoor && this._info.outdoor ? row("out", this._t("t_outdoor"), valueAt(this._smoothed(d.outdoor), t)) : ""}
         ${this._show.dashed ? (d.dashed || []).map((x) => {
           const sp = valueAt(x.setpoint, t);
-          const am = valueAt(x.ambient, t);
+          const am = valueAt(this._smoothed(x.ambient), t);
           if ((sp === null || sp === undefined) && (am === null || am === undefined)) return "";
           return `<span class="sep"></span><span class="r held"><span>${esc(this._t("held_since").replace("{s}", x.name))}</span></span>${row("set dash", this._t("t_setpoint"), sp)}${row("amb dash", this._t("t_ambient"), am)}`;
         }).join("") : ""}
@@ -2128,8 +2185,8 @@ class SplitSchedulerHistory extends HTMLElement {
           const share = known ? ` · ${Math.round(Math.min(100, (c / max) * 100))} %` : "";
           return `<span class="r"><span>${esc(this._t("compressor_band"))}</span><strong>${esc(c > 0 ? `${this._t("running")} · ${Math.round(c)} ${unit}${share}` : this._t("stopped"))}</strong></span>`;
         })() : ""}
-        ${(d.extras || []).filter((x) => this._show[x.key] !== false).map((x) => {
-          const v = valueAt(x.points, t);
+        ${(d.extras || []).filter((x) => this._isShown(x.key)).map((x) => {
+          const v = valueAt(this._smoothed(x.points), t);
           if (v === null || v === undefined) return "";
           return `<span class="r"><span><i class="lg xtra" style="border-color:${x.color}"></i>${esc(x.name)}</span><strong>${esc(`${this._fmt(v)}${x.unit ? ` ${x.unit}` : ""}`)}</strong></span>`;
         }).join("")}`;
@@ -2187,6 +2244,7 @@ const HISTORY_CSS = `
   path.loadline { fill: none; stroke: hsl(220, 85%, 30%); stroke-width: 1.8; vector-effect: non-scaling-stroke; }
   path.xline { fill: none; stroke-width: 1.8; vector-effect: non-scaling-stroke; }
   .lg.load { border-color: hsl(220, 85%, 30%); }
+  .lg.smooth { border: 0; width: 18px; height: 10px; background: no-repeat center/18px 10px url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 18 10'%3E%3Cpath d='M1 7c3-6 5 2 8-2s5-4 8 0' fill='none' stroke='%23039be5' stroke-width='1.8'/%3E%3C/svg%3E"); }
   .chartwrap.xtra { margin-top: 10px; }
   .xname { position: absolute; left: 6px; top: 2px; font-size: 11px; font-weight: 500; pointer-events: none; background: color-mix(in srgb, var(--card-background-color, #fff) 75%, transparent); padding: 0 4px; border-radius: 4px; }
   .lplot svg { display: block; width: 100%; height: 100%; overflow: visible; }
@@ -2475,11 +2533,12 @@ class SplitSchedulerCardEditor extends HTMLElement {
     const cfg = this._config;
 
     root.append(this._form(
-      { title: cfg.title || "", show_global_planning: cfg.show_global_planning, show_timeline: cfg.show_timeline, heat_pumps: cfg.heat_pumps || "none" },
+      { title: cfg.title || "", show_global_planning: cfg.show_global_planning, show_timeline: cfg.show_timeline, smooth: cfg.smooth === true, heat_pumps: cfg.heat_pumps || "none" },
       [
         { name: "title", label: "e_title", selector: { text: {} } },
         { name: "show_global_planning", label: "e_global", selector: { boolean: {} } },
         { name: "show_timeline", label: "e_timeline", selector: { boolean: {} } },
+        { name: "smooth", label: "e_smooth", selector: { boolean: {} } },
         ...((this._info?.heat_pumps || []).length ? [{
           name: "heat_pumps", label: "e_heat_pumps",
           selector: { select: { mode: "dropdown", options: ["none", "groups", "all"].map((v) => ({ value: v, label: I18N[lang(this._hass)].hp_opt[v] })) } },
@@ -2489,6 +2548,7 @@ class SplitSchedulerCardEditor extends HTMLElement {
         const next = { ...this._config, ...value };
         if (!next.title) delete next.title;
         if (!next.heat_pumps || next.heat_pumps === "none") delete next.heat_pumps;
+        if (!next.smooth) delete next.smooth;
         const rebuild = (next.heat_pumps || "none") !== (this._config.heat_pumps || "none");
         this._emit(next);
         if (rebuild) this._build();  // section des capteurs des pompes affichée ou masquée
