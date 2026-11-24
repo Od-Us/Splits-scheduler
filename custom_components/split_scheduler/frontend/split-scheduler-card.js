@@ -26,7 +26,7 @@
  *     <id de la pompe>: { sensors: [sensor.x], names: { sensor.x: Libellé } }
  */
 
-const CARD_VERSION = "1.17.0";
+const CARD_VERSION = "1.18.0";
 const ICON_URL = new URL("icon.png", import.meta.url).href;
 
 const GROUP_DEFAULTS = {
@@ -818,7 +818,8 @@ class SplitSchedulerCard extends HTMLElement {
     const pending = this._pending[g.group];
     // Grande consigne : celle du groupe (capteur « Consigne »), sinon celle du split de référence
     const groupTarget = Number(this._state(e.target)?.state);
-    const target = pending ?? (Number.isFinite(groupTarget) ? groupTarget : attrs.temperature);
+    const refId = followers[0] || g.info.climates[0];
+    const target = pending ?? (Number.isFinite(groupTarget) ? groupTarget : splitTemp(g, refId, mode, attrs.temperature));
     let big;
     if (mode === "off") big = `<span class="big word">${esc(hvac.off)}</span>`;
     else if ((target === undefined || target === null) && attrs.target_temp_low != null && attrs.target_temp_high != null) {
@@ -836,7 +837,7 @@ class SplitSchedulerCard extends HTMLElement {
       if (what) deviations.push(`${this._splitName(o.entity_id, st)} : ${what}`);
     }
     const running = followers.map((id) => this._state(id)).filter((st) => st.state !== "off");
-    const temps = [...new Set(running.map((st) => st.attributes.temperature).filter((v) => v != null).map(Number))];
+    const temps = [...new Set(running.map((st) => splitTemp(g, st.entity_id, st.state, st.attributes.temperature)).filter((v) => v != null).map(Number))];
     const modes = new Set(followers.map((id) => this._state(id).state));
     if (modes.size > 1) deviations.push(this._t("diff_modes"));
     else if (temps.length > 1) {
@@ -981,7 +982,7 @@ class SplitSchedulerCard extends HTMLElement {
       } else {
         const a = s.attributes;
         const parts = [hvac[s.state] || s.state];
-        if (a.temperature != null && s.state !== "off") parts.push(`${this._t("setpoint").toLowerCase()} ${this._fmt(a.temperature)} °C`);
+        if (a.temperature != null && s.state !== "off") parts.push(`${this._t("setpoint").toLowerCase()} ${this._fmt(splitTemp(g, eid, s.state, a.temperature))} °C`);
         if (a.current_temperature != null) parts.push(`${this._t("measured")} ${this._fmt(a.current_temperature)} °C`);
         sub = parts.join(" · ");
         if (s.state === "off") color = "var(--disabled-color, #9e9e9e)";
@@ -1293,7 +1294,7 @@ class SplitSchedulerCard extends HTMLElement {
     const num = (v) => (v === undefined || v === null || v === "" || Number.isNaN(Number(v)) ? null : Number(v));
     const stateOf = (eid) => {
       const c = states[eid];
-      return c ? { s: c.state, temp: c.state === "off" ? null : num(c.attributes.temperature), cur: num(c.attributes.current_temperature) } : undefined;
+      return c ? { s: c.state, temp: c.state === "off" ? null : num(splitTemp(g, eid, c.state, c.attributes.temperature)), cur: num(c.attributes.current_temperature) } : undefined;
     };
     const target = states[g.info.entities.target];
     const group = target ? num(target.state) : stateOf(g.info.climates[0])?.temp ?? null;
@@ -1354,7 +1355,7 @@ class SplitSchedulerCard extends HTMLElement {
       const n = g.info.climates.length;
       const rows = [];
       if (manual.includes("temperature") && a.temperature !== undefined && climate.state !== "off") {
-        const value = this._pending[g.group] ?? a.temperature;
+        const value = this._pending[g.group] ?? this._shownTarget(g, climate);
         rows.push(`<div class="row between"><span>${esc(this._t("setpoint"))}</span><div class="stepper">
           <button type="button" class="round" aria-label="${esc(this._t("lower"))}" data-action="temp" data-group="${gid}" data-value="-1">−</button>
           <span class="val">${this._fmt(value)} °C</span>
@@ -1582,13 +1583,20 @@ class SplitSchedulerCard extends HTMLElement {
     this._call(this._hass.callWS({ type: "split_scheduler/manual", group_id: group, ...settings }));
   }
 
+  /** Consigne affichée : celle du groupe, sinon celle du split sans son décalage. */
+  _shownTarget(g, climate) {
+    const groupTarget = Number(this._state(g.info.entities.target)?.state);
+    if (Number.isFinite(groupTarget)) return groupTarget;
+    return splitTemp(g, climate.entity_id, climate.state, climate.attributes.temperature);
+  }
+
   /** +/- : on regroupe les appuis rapprochés en un seul envoi. */
   _stepTemperature(g, direction) {
     const climate = this._state(g.info.climates[0]);
     if (!climate) return;
     const a = climate.attributes;
     const step = Number(a.target_temp_step) || 0.5;
-    const base = this._pending[g.group] ?? Number(a.temperature);
+    const base = this._pending[g.group] ?? Number(this._shownTarget(g, climate));
     let value = Math.round((base + direction * step) / step) * step;
     if (a.min_temp !== undefined) value = Math.max(value, Number(a.min_temp));
     if (a.max_temp !== undefined) value = Math.min(value, Number(a.max_temp));
@@ -1618,6 +1626,15 @@ function valueAt(series, t) {
     if (series[mid][0] <= t) { found = series[mid][1]; lo = mid + 1; } else hi = mid - 1;
   }
   return found;
+}
+
+/** Consigne d'un split telle qu'affichée : celle qu'il indique, moins son décalage
+ * (chauffage, ou froid / déshumidification) réglé dans l'intégration. */
+function splitTemp(g, eid, mode, raw) {
+  if (raw === undefined || raw === null || raw === "") return raw;
+  const side = { heat: "heat", cool: "cool", dry: "cool" }[mode];
+  const offset = side ? Number(g?.info?.offsets?.[eid]?.[side] || 0) : 0;
+  return Number(raw) - offset;
 }
 
 const SMOOTH_MINUTES = 5;
@@ -1741,7 +1758,7 @@ function curveEntities(g, states) {
 function groupCurves(g, full, minimal, thermo, time, num) {
   const climates = g.info.climates;
   const split = Object.fromEntries(climates.map((eid) => [eid, (full[eid] || []).map((e) => [time(e), {
-    s: e.s, temp: e.s === "off" ? null : num(e.a?.temperature), cur: num(e.a?.current_temperature),
+    s: e.s, temp: e.s === "off" ? null : num(splitTemp(g, eid, e.s, e.a?.temperature)), cur: num(e.a?.current_temperature),
   }])]));
   const thermoRows = Object.fromEntries(Object.entries(thermo).filter(([, id]) => id).map(([eid, id]) => [eid, (minimal[id] || []).map((e) => [time(e), num(e.s)])]));
   const targetRows = g.info.entities.target ? (minimal[g.info.entities.target] || []).map((e) => [time(e), e.s === "unavailable" ? undefined : num(e.s)]) : [];

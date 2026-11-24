@@ -94,6 +94,7 @@
         "menu_options": {
           "group_add": "Add a group",
           "group_edit_pick": "Edit a group",
+          "split_offsets": "Split setpoint offsets",
           "group_delete": "Delete groups",
           "init": "Back"
         }
@@ -335,6 +336,10 @@
           "plannings": "By default, the planning being edited.",
           "groups": "The source group can be chosen to copy it into other plannings."
         }
+      },
+      "split_offsets": {
+        "title": "Split setpoint offsets",
+        "description": "Offset added to the setpoint **sent** to each split, to correct its built-in thermostat (−3 to +3 °C, 0.5 steps). The displayed setpoint does not change. *Heating*: heat mode; *cooling*: cool and dry. 0 = no offset.\n\nExample: a split that stops heating too early (room at 19 °C for 20 °C requested) → heating offset **+1**."
       }
     },
     "error": {

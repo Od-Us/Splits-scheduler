@@ -101,6 +101,8 @@ def ws_info(
                     # capteur de compresseur principal (pompe de la majorité des splits)
                     "compressor": (scheduler.pump_sources.get(scheduler.main_pump(gid) or "") or [None])[0],
                     "heat_pumps": scheduler.group_pumps.get(gid, []),
+                    # décalage de consigne de chaque split (retiré des consignes affichées)
+                    "offsets": {eid: scheduler.offsets.get(eid, {}) for eid in group[CONF_CLIMATES]},
                     # tous les capteurs du compresseur principal (courbes : leur médiane)
                     "compressors": scheduler.pump_sources.get(scheduler.main_pump(gid) or "", []),
                     # capteur « compresseur » de la pompe principale (médiane, en direct)

@@ -44,6 +44,9 @@ from .const import (
     CONF_ENERGY,
     CONF_HEAT_PUMPS,
     CONF_MODEL,
+    CONF_OFFSETS,
+    OFFSET_COOL,
+    OFFSET_HEAT,
     CONF_POWER,
     CONF_PRIORITY,
     CONF_ALWAYS_QUIET,
@@ -192,6 +195,8 @@ class SplitSchedulerOptionsFlow(OptionsFlow):
         menu = [f"{prefix}_add"]
         if self.opts[kind]:
             menu += [f"{prefix}_edit_pick", f"{prefix}_delete"]
+            if kind == CONF_GROUPS:
+                menu.insert(2, "split_offsets")  # décalage des consignes des splits
         menu.append("init")
         return self.async_show_menu(step_id=step_id, menu_options=menu)
 
@@ -364,6 +369,52 @@ class SplitSchedulerOptionsFlow(OptionsFlow):
             }
         )
         return self.async_show_form(step_id=step_id, data_schema=schema, errors=errors)
+
+    def _offset_fields(self, climates: list[str]) -> dict[str, tuple[str, str]]:
+        """Champs du formulaire des décalages : libellé lisible -> (split, côté)."""
+        names: dict[str, str] = {}
+        for eid in climates:
+            state = self.hass.states.get(eid)
+            name = state.name if state else eid
+            names[eid] = name if list(names.values()).count(name) == 0 else f"{name} ({eid})"
+        heat, cool = _TXT[self._lang]["offset_heat"], _TXT[self._lang]["offset_cool"]
+        fields: dict[str, tuple[str, str]] = {}
+        for eid in climates:
+            fields[f"{names[eid]} · {heat}"] = (eid, OFFSET_HEAT)
+            fields[f"{names[eid]} · {cool}"] = (eid, OFFSET_COOL)
+        return fields
+
+    async def async_step_split_offsets(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Décalage de la consigne envoyée à chaque split (chauffage, froid)."""
+        offsets = self.opts.setdefault(CONF_OFFSETS, {})
+        climates = list(dict.fromkeys(
+            eid for group in self.opts[CONF_GROUPS].values() for eid in group[CONF_CLIMATES]
+        ))
+        fields = self._offset_fields(climates)
+        if user_input is not None:
+            for label, (eid, side) in fields.items():
+                value = round(float(user_input.get(label) or 0) * 2) / 2   # pas de 0,5 °C
+                split = dict(offsets.get(eid, {}))
+                if value:
+                    split[side] = value
+                else:
+                    split.pop(side, None)
+                if split:
+                    offsets[eid] = split
+                else:
+                    offsets.pop(eid, None)
+            return await self.async_step_groups()
+        selector = NumberSelector(
+            NumberSelectorConfig(min=-3, max=3, step=0.5, mode=NumberSelectorMode.BOX,
+                                 unit_of_measurement="°C")
+        )
+        schema = vol.Schema({
+            vol.Optional(label, default=float(offsets.get(eid, {}).get(side, 0.0))): selector
+            for label, (eid, side) in fields.items()
+        })
+        return self.async_show_form(step_id="split_offsets", data_schema=schema)
 
     async def async_step_group_delete(
         self, user_input: dict[str, Any] | None = None
@@ -1156,6 +1207,8 @@ _TXT = {
         "start_none": "Ce programme ne contient encore aucune ligne.",
         "line_new": "nouvelle ligne",
         "line_edit": "ligne de {time}",
+        "offset_heat": "décalage chauffage",
+        "offset_cool": "décalage froid",
         "hp_conflict_title": "⚠️ **Conflit avec la pompe à chaleur** — ces splits resteront en veille :",
         "hp_conflict": "{day} {start}–{end} : {mine} ici, {theirs} pour **{split}** ({group}, prioritaire sur {pump})",
         "hp_conflict_shared": "{day} {start}–{end} : {mine} ici, {theirs} pour **{split}** ({group}, même pompe {pump}) — définissez un split prioritaire",
@@ -1173,6 +1226,8 @@ _TXT = {
         "start_none": "This program has no line yet.",
         "line_new": "new line",
         "line_edit": "line at {time}",
+        "offset_heat": "heating offset",
+        "offset_cool": "cooling offset",
         "hp_conflict_title": "⚠️ **Heat pump conflict** — these splits will stay idle:",
         "hp_conflict": "{day} {start}–{end}: {mine} here, {theirs} for **{split}** ({group}, priority on {pump})",
         "hp_conflict_shared": "{day} {start}–{end}: {mine} here, {theirs} for **{split}** ({group}, same pump {pump}) — set a priority split",

@@ -94,6 +94,7 @@
         "menu_options": {
           "group_add": "Ajouter un groupe",
           "group_edit_pick": "Modifier un groupe",
+          "split_offsets": "Décalage des consignes des splits",
           "group_delete": "Supprimer des groupes",
           "init": "Retour"
         }
@@ -335,6 +336,10 @@
           "plannings": "Par défaut, le planning en cours d'édition.",
           "groups": "Le groupe source peut être choisi pour le copier dans d'autres plannings."
         }
+      },
+      "split_offsets": {
+        "title": "Décalage des consignes des splits",
+        "description": "Décalage ajouté à la consigne **envoyée** à chaque split, pour corriger son thermostat interne (de −3 à +3 °C, par pas de 0,5). La consigne affichée ne change pas. *Chauffage* : mode chauffage ; *froid* : climatisation et déshumidification. 0 = aucun décalage.\n\nExemple : un split qui arrête de chauffer trop tôt (pièce à 19 °C pour 20 °C demandés) → décalage chauffage **+1**."
       }
     },
     "error": {

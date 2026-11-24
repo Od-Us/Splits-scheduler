@@ -27,6 +27,20 @@ CONF_SETTINGS = "settings"
 CONF_OUTDOOR = "outdoor_sensor"
 # Fréquence maximale du compresseur (unité du capteur : Hz ou rpm), saisie par pompe à chaleur
 CONF_COMPRESSOR_MAX = "compressor_max"
+# Décalage de la consigne envoyée à chaque split : {entity_id: {"heat": +1.5, "cool": -0.5}}
+CONF_OFFSETS = "split_offsets"
+OFFSET_HEAT = "heat"
+OFFSET_COOL = "cool"
+
+
+def split_offset(options_offsets: dict, entity_id: str, mode: str | None) -> float:
+    """Décalage à ajouter à la consigne d'un split pour ce mode (0 hors chauffage / froid)."""
+    side = {"heat": OFFSET_HEAT, "cool": OFFSET_COOL, "dry": OFFSET_COOL}.get(mode or "")
+    if side is None:
+        return 0.0
+    return float((options_offsets or {}).get(entity_id, {}).get(side) or 0.0)
+
+
 # Pompes à chaleur (unités extérieures) : splits reliés, split prioritaire, compresseur, compteurs
 CONF_HEAT_PUMPS = "heat_pumps"
 CONF_MODEL = "model"

@@ -72,6 +72,18 @@ cet ordre : *Réglages généraux*, *Pompes à chaleur*, *Groupes de splits*,
 - **Groupes de splits** : nom et thermostats du groupe. Les splits d'un groupe
   suivent le même programme ; ils peuvent dépendre de pompes à chaleur
   différentes.
+  - **Décalage des consignes des splits** (dans le menu des groupes) : pour
+    chaque split, un *décalage chauffage* et un *décalage froid* (de −3 à
+    +3 °C, par pas de 0,5) ajoutés à la consigne **envoyée** au split, pour
+    corriger son thermostat interne. Exemple : un split qui arrête de chauffer
+    trop tôt (pièce à 19 °C pour 20 °C demandés) → décalage chauffage +1 : il
+    reçoit 21 °C. Le décalage froid vaut aussi en déshumidification ; rien n'est
+    décalé en ventilation ni à l'arrêt. C'est **transparent** : la consigne
+    affichée (carte, courbes, capteur « Consigne », écarts des dérogations)
+    reste celle du programme, et un split qui confirme la consigne décalée n'est
+    pas en dérogation ; un réglage à la télécommande est lu décalage retiré. Un
+    décalage modifié est appliqué dès l'enregistrement. Le décalage suit le
+    split, même déplacé dans un autre groupe.
 - **Unité extérieure silencieuse** 🤫 (dans chaque profil) : *Activée*,
   *Désactivée* ou vide (ne pas modifier). Réglée par l'interrupteur « Quiet
   outdoor » que Faikout publie dans Home Assistant (option **« HA switches »**

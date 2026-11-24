@@ -33,6 +33,7 @@ from .const import (
     CONF_CLIMATES,
     CONF_COMPRESSOR_MAX,
     CONF_COMPRESSORS,
+    CONF_OFFSETS,
     CONF_ENERGY,
     CONF_HEAT_PUMPS,
     CONF_MODEL,
@@ -56,6 +57,7 @@ from .const import (
     STORAGE_VERSION,
     TEMPERATURE_TOLERANCE,
     ordered,
+    split_offset,
 )
 from .compressor import Average, StartLog
 from .outdoor import (
@@ -182,6 +184,8 @@ class SplitScheduler:
         # Pompes à chaleur : capteurs du compresseur, pompe de chaque split, pompe principale
         # de chaque groupe (celle de la majorité de ses splits)
         self.heat_pumps: dict[str, dict] = ordered(options.get(CONF_HEAT_PUMPS, {}))
+        # Décalage de consigne de chaque split (chauffage / froid), invisible à l'affichage
+        self.offsets: dict[str, dict] = dict(options.get(CONF_OFFSETS, {}))
         self.pump_sources: dict[str, list[str]] = {}
         self.pump_of: dict[str, str] = {
             eid: hpid for hpid, hp in self.heat_pumps.items() for eid in hp.get(CONF_CLIMATES, [])
@@ -192,6 +196,7 @@ class SplitScheduler:
         self.compressor_max: dict[str, dict[str, Any]] = {}
         self.outdoor = OutdoorAverage()
         self._unsubs: list[CALLBACK_TYPE] = []
+        self._applied_offsets: dict[str, dict] = {}
 
     # ------------------------------------------------------------------ cycle de vie
 
@@ -199,6 +204,7 @@ class SplitScheduler:
         """Restaure l'état d'exécution sauvegardé."""
         saved = await self._store.async_load() or {}
         stored = saved.get("groups", {})
+        self._applied_offsets: dict[str, dict] = saved.get("offsets") or {}
         for hpid, pump in self.heat_pumps.items():
             self.pump_sources[hpid] = list(pump.get(CONF_COMPRESSORS) or []) or [
                 sensor for eid in pump.get(CONF_CLIMATES, []) if (sensor := compressor_sensor(self.hass, eid))
@@ -309,6 +315,36 @@ class SplitScheduler:
             )
         for gid in self.groups:
             await self.async_refresh_group(gid)
+        await self._async_resend_changed_offsets()
+
+    async def _async_resend_changed_offsets(self) -> None:
+        """Décalage modifié dans la configuration : la consigne est renvoyée tout de suite aux
+        splits concernés (sans attendre le prochain créneau), sauf split en dérogation."""
+        changed = {
+            eid for eid in {*self.offsets, *self._applied_offsets}
+            if self.offsets.get(eid) != self._applied_offsets.get(eid)
+        }
+        self._applied_offsets = dict(self.offsets)
+        if not changed:
+            return
+        for gid, group in self.groups.items():
+            state = self.states[gid]
+            if not state.enabled or state.active_profile_id is None:
+                continue
+            if state.applied_at is not None and dt_util.utcnow() - state.applied_at < timedelta(seconds=30):
+                continue  # profil envoyé à l'instant, décalage compris
+            settings = {**self._settings_for(gid, state.active_profile_id), **state.manual_settings}
+            for eid in group[CONF_CLIMATES]:
+                current = self.hass.states.get(eid)
+                if eid not in changed or eid in state.split_overrides or current is None or current.state in _NOT_READY:
+                    continue
+                _LOGGER.info("%s : décalage de consigne modifié, consigne renvoyée", eid)
+                state.applied_at = dt_util.utcnow()  # le split va confirmer : pas une dérogation
+                try:
+                    await self._async_send(eid, current, settings)
+                except (HomeAssistantError, ValueError) as err:
+                    _LOGGER.warning("Échec de l'envoi à %s : %s", eid, err)
+        self._changed()
 
     async def async_stop(self) -> None:
         """Arrête minuteries et écouteurs, sauvegarde l'état."""
@@ -348,6 +384,7 @@ class SplitScheduler:
         return {
             "groups": {gid: st.as_dict() for gid, st in self.states.items()},
             "heat_pumps": {hpid: energy.as_dict() for hpid, energy in self.energy.items()},
+            "offsets": self.offsets,
         }
 
     @callback
@@ -505,6 +542,10 @@ class SplitScheduler:
     # ------------------------------------------------------------------ compresseur
 
     # ------------------------------------------------------------------ pompes à chaleur
+
+    def offset(self, entity_id: str, mode: str | None) -> float:
+        """Décalage de consigne du split pour ce mode (chauffage, ou froid / déshumidification)."""
+        return split_offset(self.offsets, entity_id, mode)
 
     def main_pump(self, gid: str) -> str | None:
         """Pompe à chaleur de la majorité des splits du groupe, si son compresseur est suivi."""
@@ -947,7 +988,8 @@ class SplitScheduler:
                     "depuis": ovr.since.isoformat(),
                     "reprise": resume.isoformat() if resume else None,
                     "reprise_choisie": ovr.until is not None,
-                    "ecarts": _differences(current, settings) if current is not None else [],
+                    "ecarts": _differences(current, settings, self.offset(entity_id, current.state))
+                    if current is not None else [],
                 }
             )
         return result
@@ -1129,8 +1171,12 @@ class SplitScheduler:
             and mode != "fan_only"
             and features & ClimateEntityFeature.TARGET_TEMPERATURE
         ):
-            wanted = temperature
-            temperature = target_temperature(attrs, temperature)
+            offset = self.offset(entity_id, mode)
+            wanted = temperature + offset
+            temperature = target_temperature(attrs, wanted)
+            if offset:
+                _LOGGER.debug("%s : consigne %s °C envoyée %s °C (décalage %+g)", entity_id,
+                              profile.get(ATTR_TEMPERATURE), temperature, offset)
             if temperature != wanted:
                 _LOGGER.info(
                     "%s : consigne %s °C ramenée à %s °C (limites et pas du split)",
@@ -1263,13 +1309,13 @@ class SplitScheduler:
             if state.override:
                 if single and state.hand_set:
                     # Groupe d'un seul split en dérogation : la consigne du groupe suit le split
-                    state.manual_settings = _manual_from(new)
+                    state.manual_settings = _manual_from(new, self.offset(entity_id, new.state))
                     self._changed()
                 continue
             if entity_id in state.split_overrides or state.active_profile_id is None:
                 continue
             profile = self._settings_for(gid, state.active_profile_id)
-            if not _deviates(new, profile):
+            if not _deviates(new, profile, self.offset(entity_id, new.state)):
                 continue
             if single:
                 _LOGGER.info(
@@ -1281,7 +1327,7 @@ class SplitScheduler:
                 state.override_since = now
                 state.override = True
                 state.hand_set = True
-                state.manual_settings = _manual_from(new)
+                state.manual_settings = _manual_from(new, self.offset(entity_id, new.state))
             else:
                 _LOGGER.info(
                     "Groupe « %s » : réglage manuel détecté sur %s, ce split seul est en "
@@ -1293,15 +1339,15 @@ class SplitScheduler:
             self._changed()
 
 
-def _manual_from(split: State) -> dict[str, Any]:
-    """Consigne et mode d'un split, comme réglage manuel du groupe."""
+def _manual_from(split: State, offset: float = 0.0) -> dict[str, Any]:
+    """Consigne et mode d'un split, comme réglage manuel du groupe (décalage retiré)."""
     settings: dict[str, Any] = {ATTR_HVAC_MODE: split.state}
     if (temperature := split.attributes.get("temperature")) is not None:
-        settings[ATTR_TEMPERATURE] = float(temperature)
+        settings[ATTR_TEMPERATURE] = float(temperature) - offset
     return settings
 
 
-def _deviates(state: State, profile: dict) -> bool:
+def _deviates(state: State, profile: dict, offset: float = 0.0) -> bool:
     """Le split s'écarte-t-il des réglages imposés par le profil ?"""
     attrs = state.attributes
     hvac_mode = profile.get(ATTR_HVAC_MODE)
@@ -1315,14 +1361,14 @@ def _deviates(state: State, profile: dict) -> bool:
         temperature is not None
         and current is not None
         and state.state != "fan_only"
-        and abs(float(current) - target_temperature(attrs, temperature)) > TEMPERATURE_TOLERANCE
+        and abs(float(current) - target_temperature(attrs, temperature + offset)) > TEMPERATURE_TOLERANCE
     ):
         return True
     # Ventilateur et oscillation : pas des dérogations (le prochain profil les rétablit)
     return False
 
 
-def _differences(state: State, profile: dict) -> list[dict[str, Any]]:
+def _differences(state: State, profile: dict, offset: float = 0.0) -> list[dict[str, Any]]:
     """Réglages du split qui s'écartent du profil : [{reglage, valeur, prevu}]."""
     if state.state in _NOT_READY:
         return []
@@ -1336,9 +1382,10 @@ def _differences(state: State, profile: dict) -> list[dict[str, Any]]:
     temperature = profile.get(ATTR_TEMPERATURE)
     current = attrs.get("temperature")
     if temperature is not None and current is not None and state.state != "fan_only":
-        wanted = target_temperature(attrs, temperature)
+        wanted = target_temperature(attrs, temperature + offset)
         if abs(float(current) - wanted) > TEMPERATURE_TOLERANCE:
-            result.append({"reglage": "temperature", "valeur": float(current), "prevu": wanted})
+            # valeurs affichées sans le décalage (transparent pour l'utilisateur)
+            result.append({"reglage": "temperature", "valeur": float(current) - offset, "prevu": wanted - offset})
     return result
 
 
