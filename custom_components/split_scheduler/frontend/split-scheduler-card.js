@@ -20,13 +20,13 @@
  *       compressor: [avg_24h, avg_profile]   # démarrages du compresseur par heure
  *       compressor_timeline: true            # frise des marches du compresseur
  *       chart: [ambient, setpoint, outdoor]  # courbes du jour (au choix)
- *   smooth: true                     # courbes lissées (moyenne glissante sur 5 minutes)
+ *   smooth: false                    # courbes brutes (par défaut : moyenne glissante sur 5 minutes)
  *   heat_pumps: groups               # panneaux des pompes à chaleur : none | groups | all
  *   heat_pump_sensors:               # capteurs supplémentaires d'un panneau (facultatif)
  *     <id de la pompe>: { sensors: [sensor.x], names: { sensor.x: Libellé } }
  */
 
-const CARD_VERSION = "1.18.0";
+const CARD_VERSION = "1.18.1";
 const ICON_URL = new URL("icon.png", import.meta.url).href;
 
 const GROUP_DEFAULTS = {
@@ -165,7 +165,6 @@ const I18N = {
     hp_conflict_short_free: "conflit de mode sur {h}",
     e_heat_pumps: "Panneaux des pompes à chaleur",
     e_smooth: "Lisser les courbes (moyenne glissante sur 5 minutes)",
-    t_smooth: "Lissage 5 min",
     e_hp_sensors_title: "Capteurs supplémentaires des pompes à chaleur",
     e_hp_sensors: "Capteurs affichés dans le panneau",
     e_hp_names: "Libellés (vide = nom du capteur)",
@@ -335,7 +334,6 @@ const I18N = {
     hp_conflict_short_free: "mode conflict on {h}",
     e_heat_pumps: "Heat pump panels",
     e_smooth: "Smooth the curves (5-minute moving average)",
-    t_smooth: "5-min smoothing",
     e_hp_sensors_title: "Heat pump extra sensors",
     e_hp_sensors: "Sensors shown in the panel",
     e_hp_names: "Labels (empty = sensor name)",
@@ -1206,7 +1204,7 @@ class SplitSchedulerCard extends HTMLElement {
     const series = [];
     const withLive = (points, v) => [...(points || []), [now, v ?? null]];
     if (mode.includes("setpoint")) series.push({ points: withLive(curves?.setpoint, live.group), cls: "set", step: true });
-    const smooth = (points) => (this._config.smooth ? smoothSeries(points, now) : points);
+    const smooth = (points) => (this._config.smooth !== false ? smoothSeries(points, now) : points);
     if (mode.includes("ambient")) series.push({ points: smooth(withLive(curves?.ambient, live.mean)), cls: "amb", step: false });
     if (mode.includes("outdoor")) {
       const v = history?.outdoorLive?.();
@@ -1478,7 +1476,7 @@ class SplitSchedulerCard extends HTMLElement {
         this._openSplit(g, value);
         break;
       case "detail":
-        SplitSchedulerHistory.open(this._hass, this._info, g, { smooth: this._config.smooth === true });
+        SplitSchedulerHistory.open(this._hass, this._info, g, { smooth: this._config.smooth !== false });
         break;
       case "expand":
         if (this._expanded.has(group)) this._expanded.delete(group);
@@ -1972,8 +1970,7 @@ class SplitSchedulerHistory extends HTMLElement {
     const toggles = [["setpoint", "set", this._t(multi ? "t_setpoint_group" : "t_setpoint")], ["ambient", "amb", this._t(multi ? "t_ambient_mean" : "t_ambient")],
       ...(d?.dashed?.length ? [["dashed", "set dash", this._t("t_dashed")]] : []), ...(this._info.outdoor ? [["outdoor", "out", this._t("t_outdoor")]] : []),
       ...(g.info.compressor ? [["load", "load", this._t("t_load")]] : []),
-      ...(d?.extras || []).map((x) => [x.key, "xtra", x.name, x.color]),
-      ...(d && !d.error ? [["smooth", "smooth", this._t("t_smooth")]] : [])]
+      ...(d?.extras || []).map((x) => [x.key, "xtra", x.name, x.color])]
       .map(([k, cls, label, color]) => {
         const on = this._isShown(k);
         return `<button type="button" class="tog ${on ? "on" : ""}" aria-pressed="${on}" data-act="toggle" data-value="${esc(k)}"><i class="lg ${cls}"${color ? ` style="border-color:${color}"` : ""}></i>${esc(label)}</button>`;
@@ -2261,7 +2258,6 @@ const HISTORY_CSS = `
   path.loadline { fill: none; stroke: hsl(220, 85%, 30%); stroke-width: 1.8; vector-effect: non-scaling-stroke; }
   path.xline { fill: none; stroke-width: 1.8; vector-effect: non-scaling-stroke; }
   .lg.load { border-color: hsl(220, 85%, 30%); }
-  .lg.smooth { border: 0; width: 18px; height: 10px; background: no-repeat center/18px 10px url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 18 10'%3E%3Cpath d='M1 7c3-6 5 2 8-2s5-4 8 0' fill='none' stroke='%23039be5' stroke-width='1.8'/%3E%3C/svg%3E"); }
   .chartwrap.xtra { margin-top: 10px; }
   .xname { position: absolute; left: 6px; top: 2px; font-size: 11px; font-weight: 500; pointer-events: none; background: color-mix(in srgb, var(--card-background-color, #fff) 75%, transparent); padding: 0 4px; border-radius: 4px; }
   .lplot svg { display: block; width: 100%; height: 100%; overflow: visible; }
@@ -2550,7 +2546,7 @@ class SplitSchedulerCardEditor extends HTMLElement {
     const cfg = this._config;
 
     root.append(this._form(
-      { title: cfg.title || "", show_global_planning: cfg.show_global_planning, show_timeline: cfg.show_timeline, smooth: cfg.smooth === true, heat_pumps: cfg.heat_pumps || "none" },
+      { title: cfg.title || "", show_global_planning: cfg.show_global_planning, show_timeline: cfg.show_timeline, smooth: cfg.smooth !== false, heat_pumps: cfg.heat_pumps || "none" },
       [
         { name: "title", label: "e_title", selector: { text: {} } },
         { name: "show_global_planning", label: "e_global", selector: { boolean: {} } },
@@ -2565,7 +2561,7 @@ class SplitSchedulerCardEditor extends HTMLElement {
         const next = { ...this._config, ...value };
         if (!next.title) delete next.title;
         if (!next.heat_pumps || next.heat_pumps === "none") delete next.heat_pumps;
-        if (!next.smooth) delete next.smooth;
+        if (next.smooth !== false) delete next.smooth;  // lissage par défaut
         const rebuild = (next.heat_pumps || "none") !== (this._config.heat_pumps || "none");
         this._emit(next);
         if (rebuild) this._build();  // section des capteurs des pompes affichée ou masquée

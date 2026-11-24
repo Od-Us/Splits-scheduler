@@ -330,11 +330,11 @@ supplémentaire** du groupe (humidité, CO₂…) avec sa propre échelle et son
 curseur donnant toutes les valeurs à l'instant choisi. Par défaut, seules les **températures** sont
 affichées (consigne, ambiance, extérieur, dérogations, et les capteurs
 supplémentaires en °C) ; la charge du compresseur et les autres capteurs
-s'activent d'un clic. Le bouton **Lissage 5 min** trace les courbes mesurées
-(ambiance, extérieur, capteurs supplémentaires) en **moyenne glissante sur 5
-minutes**, pour gommer les dents de scie des thermomètres ; les consignes
-restent en escalier. L'option de la carte *Lisser les courbes* l'active par
-défaut, et l'applique aussi aux courbes du jour de la carte. Plein écran sur
+s'activent d'un clic. Les courbes mesurées (ambiance, extérieur,
+capteurs supplémentaires) sont tracées en **moyenne glissante sur 5 minutes**,
+pour gommer les dents de scie des thermomètres ; les consignes restent en
+escalier. Ce lissage, actif par défaut, se désactive dans l'éditeur de la carte
+(*Lisser les courbes*) ; il vaut pour la vue détaillée et les courbes du jour. Plein écran sur
 téléphone. La navigation est limitée à l'historique détaillé de Home Assistant
 (10 jours par défaut, réglage `purge_keep_days` de l'enregistreur).
 
