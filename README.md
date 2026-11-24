@@ -403,8 +403,20 @@ chaleur, groupes, types de planning, profils, programmation.
   téléphone : choix du jour en pastilles et liste des changements.
 - **Réglages généraux** : capteur extérieur, préréglage Normal et silence à
   chaque commande.
-- Les autres onglets arrivent dans une prochaine version ; en attendant, un
-  bouton ouvre le menu Paramètres de l'intégration.
+- **Profils** : liste à gauche (↑ / ↓ pour l'ordre), réglages à droite : nom,
+  mode en boutons, consigne avec − / +, ventilation, oscillations, unité
+  extérieure silencieuse (listes : *Ne pas modifier* ou une valeur annoncée par
+  les splits), écart avec l'extérieur, « Utilisé dans … ». *Dupliquer*,
+  *Supprimer* (refusé si le profil est encore dans un programme). Un nouveau
+  profil est autorisé dans tous les plannings.
+- **Types de planning** : nom, profils autorisés en pastilles à cocher (🔒 :
+  utilisé dans un programme du planning), *Dupliquer (avec les programmes)*,
+  *Supprimer*.
+- **Groupes** : nom, splits, **décalage chauffage / froid** de chaque split, et
+  les réglages de la pompe à chaleur de ses splits (modèle, split prioritaire,
+  fréquence maximale, capteurs du compresseur, puissance, énergie).
+- **Pompes à chaleur** : les mêmes réglages, plus les splits reliés (un split
+  n'appartient qu'à une pompe).
 
 Les modifications restent en attente (« 2 modifications non enregistrées »)
 jusqu'à **Enregistrer** ; *Annuler* revient à la configuration enregistrée.

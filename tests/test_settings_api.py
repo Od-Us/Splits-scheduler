@@ -75,3 +75,43 @@ async def test_save_requires_admin(hass: HomeAssistant, freezer, hass_ws_client,
     await client.send_json({"id": 2, "type": "split_scheduler/config/save", "programs": {}})
     reply = await client.receive_json()
     assert not reply["success"] and reply["error"]["code"] == "unauthorized"
+
+
+async def test_save_collections(hass: HomeAssistant, freezer, hass_ws_client):
+    entry = await _setup(hass, freezer)
+    client = await hass_ws_client(hass)
+    await client.send_json({"id": 1, "type": "split_scheduler/config/get"})
+    cfg = (await client.receive_json())["result"]
+    assert "hvac_mode" in cfg["modes"] and cfg["names"] == {A: "sejour"}
+    profiles = [{k: v for k, v in p.items() if k not in ("color", "summary")} for p in cfg["profiles"]]
+    profiles.append({"id": "nuit1", "name": "Nuit", "hvac_mode": "heat", "temperature": 17.5})
+    groups = [{"id": "g", "name": "Séjour", "climates": [A]}, {"id": "g2", "name": "Bureau", "climates": ["climate.bureau"]}]
+    pumps = [{"id": "pac1", "name": "PAC", "climates": [A, "climate.bureau"], "priority": A, "compressor_max": 80}]
+    plannings = [{"id": p["id"], "name": p["name"], "allowed": p["allowed"] + ["nuit1"]} for p in cfg["plannings"]]
+    await client.send_json({"id": 2, "type": "split_scheduler/config/save", "profiles": profiles,
+                            "groups": groups, "heat_pumps": pumps, "plannings": plannings,
+                            "offsets": {A: {"heat": 1.4, "cool": 0}},
+                            "programs": {"normal": {"g2": {"0": [["06:00", "nuit1"]]}}}})
+    reply = await client.receive_json()
+    assert reply["success"], reply
+    await hass.async_block_till_done()
+    opts = entry.options
+    assert opts["profiles"]["nuit1"]["temperature"] == 17.5
+    assert opts["groups"]["g2"]["pos"] == 1 and opts["heat_pumps"]["pac1"]["priority"] == A
+    assert opts["split_offsets"] == {A: {"heat": 1.5}}
+    assert opts["plannings"]["normal"]["programs"]["g2"]["0"] == [["06:00", "nuit1"]]
+
+    # Refus : profil utilisé supprimé, split dans deux pompes, noms en double
+    for n, (change, msg) in enumerate((
+        ({"profiles": [p for p in profiles if p["id"] != "nuit1"]}, "encore utilisé"),
+        ({"heat_pumps": pumps + [{"id": "pac2", "name": "PAC 2", "climates": [A]}]}, "autre pompe"),
+        ({"groups": groups + [{"id": "g3", "name": "séjour", "climates": [A]}]}, "déjà utilisé"),
+    )):
+        await client.send_json({"id": 10 + n, "type": "split_scheduler/config/save", **change})
+        reply = await client.receive_json()
+        assert not reply["success"] and msg in reply["error"]["message"], reply
+    # Groupe supprimé : son programme disparaît
+    await client.send_json({"id": 30, "type": "split_scheduler/config/save", "groups": groups[:1]})
+    assert (await client.receive_json())["success"]
+    await hass.async_block_till_done()
+    assert "g2" not in entry.options["plannings"]["normal"]["programs"]

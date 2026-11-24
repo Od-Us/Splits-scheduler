@@ -10,7 +10,7 @@
  * programmation hebdomadaire ; les autres onglets renvoient au menu Paramètres.
  */
 
-const SETTINGS_VERSION = "1.19.0";
+const SETTINGS_VERSION = "1.20.0";
 const STEP = 15; // minutes : pas des poignées
 const DAY_MIN = 1440;
 const SETTINGS_URL = "/config/integrations/integration/split_scheduler";
@@ -68,6 +68,58 @@ const TXT = {
     always_quiet: "Unité extérieure silencieuse à chaque commande",
     soon: "Cet onglet arrive dans une prochaine version. En attendant, ces réglages se font dans le menu Paramètres de l'intégration.",
     open_settings: "Ouvrir les paramètres de l'intégration",
+    add: "+ Ajouter",
+    up: "Monter",
+    down: "Descendre",
+    delete: "Supprimer",
+    duplicate: "Dupliquer",
+    name: "Nom",
+    new_profile: "Nouveau profil",
+    new_planning: "Nouveau planning",
+    new_group: "Nouveau groupe",
+    new_pump: "Nouvelle pompe à chaleur",
+    copy_of: "{n} (copie)",
+    keep: "Ne pas modifier",
+    hvac: { off: "Arrêt", heat: "Chauffage", cool: "Climatisation", heat_cool: "Chaud / froid", auto: "Automatique", dry: "Déshumidification", fan_only: "Ventilation" },
+    mode: "Mode",
+    setpoint: "Consigne",
+    fan_mode: "Ventilation",
+    swing_mode: "Oscillation verticale",
+    swing_horizontal_mode: "Oscillation horizontale",
+    quiet_outdoor: "Unité extérieure silencieuse",
+    quiet_on: "Activée",
+    quiet_off: "Désactivée",
+    outdoor_max_delta: "Écart maximal avec l'extérieur (°C)",
+    outdoor_delta_help: "Chauffage : consigne ≤ extérieur + écart ; climatisation : consigne ≥ extérieur − écart. Vide : pas d'adaptation.",
+    used_in: "Utilisé dans : {u}",
+    unused: "Utilisé dans aucun programme.",
+    in_use: "Profil utilisé dans un programme : retirez-le d'abord des programmes ({u}).",
+    keep_one: "Il faut en garder au moins un.",
+    allowed: "Profils autorisés",
+    allowed_help: "Un clic coche ou décoche. 🔒 : utilisé dans un programme de ce planning, ne peut pas être décoché.",
+    dup_planning: "Dupliquer (avec les programmes)",
+    splits: "Splits",
+    climates: "Splits (thermostats)",
+    offsets: "Décalage des consignes",
+    offset_heat: "Décalage chauffage",
+    offset_cool: "Décalage froid",
+    offsets_help: "Ajouté à la consigne envoyée au split pour corriger son thermostat (invisible sur la carte), de −3 à +3 °C.",
+    pump_of_group: "Pompe à chaleur « {n} »",
+    no_pump: "Aucune pompe à chaleur pour ces splits : créez-la dans l'onglet Pompes à chaleur.",
+    pump_summary_help: "Les mêmes réglages que dans l'onglet Pompes à chaleur.",
+    model: "Modèle",
+    priority: "Split prioritaire",
+    no_priority: "Aucun",
+    compressors: "Capteurs du compresseur",
+    compressors_help: "Vide : détection automatique ({d}). Plusieurs capteurs : leur médiane.",
+    compressor_max: "Fréquence maximale du compresseur",
+    compressor_max_help: "Unité du capteur (Hz ou tr/min). Vide : observée sur 30 jours.",
+    power_sensor: "Capteur de puissance (W)",
+    energy_sensor: "Compteur d'énergie (kWh)",
+    pump_climates: "Splits reliés à cette unité extérieure",
+    other_pump: "{s} appartient déjà à {h}.",
+    empty_list: "Aucun élément.",
+    stale_ref: "Après enregistrement, vérifiez la programmation des nouveaux groupes et plannings.",
   },
   en: {
     name: "Split scheduler settings",
@@ -121,6 +173,58 @@ const TXT = {
     always_quiet: "Quiet outdoor unit with every command",
     soon: "This tab comes in a later version. Meanwhile, these settings are in the integration's Settings menu.",
     open_settings: "Open the integration settings",
+    add: "+ Add",
+    up: "Move up",
+    down: "Move down",
+    delete: "Delete",
+    duplicate: "Duplicate",
+    name: "Name",
+    new_profile: "New profile",
+    new_planning: "New planning",
+    new_group: "New group",
+    new_pump: "New heat pump",
+    copy_of: "{n} (copy)",
+    keep: "Do not change",
+    hvac: { off: "Off", heat: "Heat", cool: "Cool", heat_cool: "Heat/Cool", auto: "Auto", dry: "Dry", fan_only: "Fan only" },
+    mode: "Mode",
+    setpoint: "Setpoint",
+    fan_mode: "Fan",
+    swing_mode: "Vertical swing",
+    swing_horizontal_mode: "Horizontal swing",
+    quiet_outdoor: "Quiet outdoor unit",
+    quiet_on: "On",
+    quiet_off: "Off",
+    outdoor_max_delta: "Maximum gap with outdoor (°C)",
+    outdoor_delta_help: "Heating: setpoint ≤ outdoor + gap; cooling: setpoint ≥ outdoor − gap. Empty: no adaptation.",
+    used_in: "Used in: {u}",
+    unused: "Not used in any program.",
+    in_use: "Profile used in a program: remove it from the programs first ({u}).",
+    keep_one: "At least one must be kept.",
+    allowed: "Allowed profiles",
+    allowed_help: "Click to check or uncheck. 🔒: used in a program of this planning, cannot be unchecked.",
+    dup_planning: "Duplicate (with the programs)",
+    splits: "Splits",
+    climates: "Splits (thermostats)",
+    offsets: "Setpoint offsets",
+    offset_heat: "Heating offset",
+    offset_cool: "Cooling offset",
+    offsets_help: "Added to the setpoint sent to the split to correct its thermostat (not shown on the card), −3 to +3 °C.",
+    pump_of_group: "Heat pump \"{n}\"",
+    no_pump: "No heat pump for these splits: create it in the Heat pumps tab.",
+    pump_summary_help: "The same settings as in the Heat pumps tab.",
+    model: "Model",
+    priority: "Priority split",
+    no_priority: "None",
+    compressors: "Compressor sensors",
+    compressors_help: "Empty: automatic detection ({d}). Several sensors: their median.",
+    compressor_max: "Maximum compressor frequency",
+    compressor_max_help: "Sensor unit (Hz or rpm). Empty: observed over 30 days.",
+    power_sensor: "Power sensor (W)",
+    energy_sensor: "Energy meter (kWh)",
+    pump_climates: "Splits connected to this outdoor unit",
+    other_pump: "{s} already belongs to {h}.",
+    empty_list: "No item.",
+    stale_ref: "After saving, check the programming of new groups and plannings.",
   },
 };
 
@@ -164,6 +268,11 @@ function programConflicts(own, other, sideOf) {
   });
   return result;
 }
+
+
+const newId = () => Math.random().toString(16).slice(2, 10);
+const normName = (n) => String(n || "").normalize("NFKD").replace(/[̀-ͯ]/g, "").toLowerCase().split(/\s+/).filter(Boolean).join(" ");
+const KINDS = { profiles: "profiles", plannings: "plannings", groups: "groups", heat_pumps: "heat_pumps" };
 
 class SplitSchedulerSettingsCard extends HTMLElement {
   constructor() {
@@ -219,6 +328,7 @@ class SplitSchedulerSettingsCard extends HTMLElement {
   async _load() {
     try {
       const cfg = await this._hass.callWS({ type: "split_scheduler/config/get" });
+      this._server = cfg;
       this._cfg = cfg;
       this._error = null;
       this._reset();
@@ -234,8 +344,12 @@ class SplitSchedulerSettingsCard extends HTMLElement {
 
   /** Copie de travail : programmes et réglages généraux. */
   _reset() {
+    // _orig : configuration enregistrée ; _cfg : copie de travail (profils, groupes…)
+    this._orig = clone(this._server);
+    this._cfg = clone(this._server);
     this._programs = Object.fromEntries(this._cfg.plannings.map((p) => [p.id, clone(p.programs || {})]));
     this._settings = clone(this._cfg.settings);
+    this._item = {};
     this._sel = null;
     this._panel = null;
     this._genForm = null;
@@ -245,13 +359,40 @@ class SplitSchedulerSettingsCard extends HTMLElement {
 
   _dirtyCount() {
     if (!this._cfg) return 0;
-    let n = 0;
+    return Object.keys(this._programChanges()).length + Object.keys(this._collectionChanges()).length
+      + (JSON.stringify(this._orig.settings) !== JSON.stringify(this._settings) ? 1 : 0);
+  }
+
+  /** Programmes modifiés : {planning: {groupe: programme}} (une entrée par couple). */
+  _programChanges() {
+    const out = {};
     for (const pl of this._cfg.plannings) {
-      const ids = new Set([...Object.keys(pl.programs || {}), ...Object.keys(this._programs[pl.id] || {})]);
-      for (const gid of ids) if (JSON.stringify(this._norm(pl.programs?.[gid])) !== JSON.stringify(this._norm(this._programs[pl.id]?.[gid]))) n++;
+      const before = this._orig.plannings.find((p) => p.id === pl.id)?.programs || {};
+      const ids = new Set([...Object.keys(before), ...Object.keys(this._programs[pl.id] || {})]);
+      for (const gid of ids) {
+        if (!this._cfg.groups.some((g) => g.id === gid)) continue;
+        const now = this._norm(this._programs[pl.id]?.[gid]);
+        if (JSON.stringify(this._norm(before[gid])) !== JSON.stringify(now)) out[`${pl.id}|${gid}`] = [pl.id, gid, now];
+      }
     }
-    if (JSON.stringify(this._cfg.settings) !== JSON.stringify(this._settings)) n++;
-    return n;
+    return out;
+  }
+
+  /** Collections modifiées (profils, plannings, groupes, pompes, décalages) : valeurs à envoyer. */
+  _collectionChanges() {
+    const strip = {
+      profiles: (p) => { const { color, summary, ...rest } = p; return rest; },
+      plannings: (p) => ({ id: p.id, name: p.name, allowed: p.allowed, ...(p.copy_from ? { copy_from: p.copy_from } : {}) }),
+      groups: (g) => ({ id: g.id, name: g.name, climates: g.climates }),
+      heat_pumps: (h) => { const { priority_name, ...rest } = h; return rest; },
+    };
+    const out = {};
+    for (const [key, fn] of Object.entries(strip)) {
+      const now = this._cfg[key].map(fn);
+      if (JSON.stringify(now) !== JSON.stringify(this._orig[key].map(fn))) out[key] = now;
+    }
+    if (JSON.stringify(this._cfg.offsets || {}) !== JSON.stringify(this._orig.offsets || {})) out.offsets = this._cfg.offsets || {};
+    return out;
   }
 
   _norm(program) {
@@ -301,6 +442,7 @@ class SplitSchedulerSettingsCard extends HTMLElement {
   _render() {
     if (!this._hass) return;
     const scrollY = this.shadowRoot.querySelector(".body")?.scrollTop;
+    this._formSpecs = {};
     let html;
     if (this._error) html = `<ha-card><div class="msg err">${escS(this._error)}</div></ha-card>`;
     else if (!this._cfg) html = `<ha-card><div class="msg">${escS(this._t("loading"))}</div></ha-card>`;
@@ -308,6 +450,7 @@ class SplitSchedulerSettingsCard extends HTMLElement {
     this.shadowRoot.innerHTML = `<style>${SETTINGS_CSS}</style>${html}`;
     if (scrollY) this.shadowRoot.querySelector(".body")?.scrollTo(0, scrollY);
     if (this._cfg && this._tab === "general") this._mountGeneral();
+    if (this._cfg) this._mountForms();
   }
 
   _renderHeader() {
@@ -333,6 +476,10 @@ class SplitSchedulerSettingsCard extends HTMLElement {
   _renderBody() {
     if (this._tab === "program") return this._renderProgram();
     if (this._tab === "general") return `<div class="general"></div>`;
+    if (this._tab === "profiles") return this._renderProfiles();
+    if (this._tab === "plannings") return this._renderPlannings();
+    if (this._tab === "groups") return this._renderGroups();
+    if (this._tab === "heat_pumps") return this._renderPumps();
     return `<div class="soon"><p>${escS(this._t("soon"))}</p><button type="button" class="outlined" data-act="open-settings">${escS(this._t("open_settings"))}</button></div>`;
   }
 
@@ -475,7 +622,7 @@ class SplitSchedulerSettingsCard extends HTMLElement {
         for (const [a, b, m, o] of programConflicts(progs[this._group], progs[g.id], sideOf).slice(0, 4)) {
           lines.push(this._tf("conflict", {
             d: this._t("days")[Math.floor(a / DAY_MIN)].slice(0, 3), a: toHHMM(a % DAY_MIN), b: b % DAY_MIN === 0 ? "24:00" : toHHMM(b % DAY_MIN),
-            m: this._t("side")[m], o: this._t("side")[o], s: g.names?.[split] || split, g: g.name,
+            m: this._t("side")[m], o: this._t("side")[o], s: g.names?.[split] || this._name(split), g: g.name,
             p: hp.priority ? this._tf("conflict_prio", { h: hp.name }) : this._tf("conflict_free", { h: hp.name }),
           }));
         }
@@ -483,6 +630,247 @@ class SplitSchedulerSettingsCard extends HTMLElement {
     }
     if (!lines.length) return "";
     return `<div class="warn" role="alert">⚠️ <div><strong>${escS(this._t("conflict_title"))}</strong>${lines.slice(0, 8).map((l) => `<div>${escS(l)}</div>`).join("")}</div></div>`;
+  }
+
+
+  // ------------------------------------------------------------------ listes (profils, plannings, groupes, pompes)
+
+  _colorOf(name) {
+    const key = normName(name);
+    const c = this._cfg.colors;
+    for (const [prefix, color] of c?.prefixes || []) if (key.startsWith(prefix)) return color;
+    const extra = c?.extra || ["#8e24aa"];
+    return extra[[...key].reduce((a, ch) => a + ch.charCodeAt(0), 0) % extra.length];
+  }
+
+  _selected(kind) {
+    const list = this._cfg[kind];
+    if (!list.some((x) => x.id === this._item[kind])) this._item[kind] = list[0]?.id;
+    return list.find((x) => x.id === this._item[kind]);
+  }
+
+  _listPane(kind, subOf, dotOf) {
+    const list = this._cfg[kind];
+    const cur = this._selected(kind)?.id;
+    const rows = list.map((x) => `<button type="button" class="li ${x.id === cur ? "on" : ""}" data-act="item" data-kind="${kind}" data-value="${escS(x.id)}">
+      ${dotOf ? `<i style="background:${dotOf(x)}"></i>` : ""}<span class="col"><strong>${escS(x.name)}</strong><span class="small">${escS(subOf(x))}</span></span></button>`).join("");
+    const head = `<div class="lhead"><span>${escS(this._t("tabs")[kind])}</span>${this._admin ? `<button type="button" class="filled sm" data-act="add" data-kind="${kind}">${escS(this._t("add"))}</button>` : ""}</div>`;
+    const order = this._admin && cur ? `<div class="row"><button type="button" class="text" data-act="move" data-kind="${kind}" data-value="-1">↑ ${escS(this._t("up"))}</button><button type="button" class="text" data-act="move" data-kind="${kind}" data-value="1">↓ ${escS(this._t("down"))}</button></div>` : "";
+    return `<aside class="list">${head}${rows || `<p class="small">${escS(this._t("empty_list"))}</p>`}${order}</aside>`;
+  }
+
+  _textField(kind, field, label, value, extra = "") {
+    return `<label class="field wide"><span>${escS(label)}</span><input type="text" value="${escS(value ?? "")}" data-field="${field}" data-kind="${kind}" ${this._admin ? "" : "disabled"} ${extra}></label>`;
+  }
+
+  _numField(kind, field, label, value, { min, max, step = 0.5, help = "" } = {}) {
+    return `<label class="field"><span>${escS(label)}</span><input type="number" inputmode="decimal" min="${min}" max="${max}" step="${step}" value="${value ?? ""}" data-field="${field}" data-kind="${kind}" data-num="1" ${this._admin ? "" : "disabled"}>${help ? `<em>${escS(help)}</em>` : ""}</label>`;
+  }
+
+  _selectField(kind, field, label, value, options, keepLabel) {
+    const opts = [`<option value="">${escS(keepLabel ?? this._t("keep"))}</option>`, ...options.map(([v, l]) => `<option value="${escS(v)}" ${String(value) === String(v) ? "selected" : ""}>${escS(l)}</option>`)];
+    if (value && !options.some(([v]) => String(v) === String(value))) opts.push(`<option value="${escS(value)}" selected>${escS(value)}</option>`);
+    return `<label class="field"><span>${escS(label)}</span><select data-field="${field}" data-kind="${kind}" ${this._admin ? "" : "disabled"}>${opts.join("")}</select></label>`;
+  }
+
+  /** Formulaire Home Assistant (sélecteurs d'entités) monté après le rendu. */
+  _form(key, schema, data, onChange, labels = {}, helpers = {}) {
+    (this._formSpecs ??= {})[key] = { schema, data, onChange, labels, helpers };
+    return `<div class="haform" data-form="${escS(key)}"></div>`;
+  }
+
+  _mountForms() {
+    for (const host of this.shadowRoot.querySelectorAll("[data-form]")) {
+      const spec = this._formSpecs?.[host.dataset.form];
+      if (!spec) continue;
+      const form = document.createElement("ha-form");
+      form.hass = this._hass;
+      form.schema = spec.schema;
+      form.data = spec.data;
+      form.disabled = !this._admin;
+      form.computeLabel = (sch) => spec.labels[sch.name] || sch.name;
+      form.computeHelper = (sch) => spec.helpers[sch.name] || "";
+      form.addEventListener("value-changed", (ev) => { spec.onChange(ev.detail.value); this._changed(); });
+      host.append(form);
+    }
+  }
+
+  _usage(pid) {
+    const out = [];
+    for (const pl of this._cfg.plannings) {
+      const groups = this._cfg.groups.filter((g) => Object.values(this._programs[pl.id]?.[g.id] || {}).some((slots) => slots.some(([, p]) => p === pid)));
+      if (groups.length) out.push(`${pl.name} (${groups.map((g) => g.name).join(", ")})`);
+    }
+    return out;
+  }
+
+  _renderProfiles() {
+    const hv = this._t("hvac");
+    const list = this._listPane("profiles", (p) => p.summary || "", (p) => p.color);
+    const p = this._selected("profiles");
+    if (!p) return `<div class="split">${list}</div>`;
+    const ro = !this._admin;
+    const modes = [["", this._t("keep")], ...this._cfg.modes.hvac_mode.map((m) => [m, hv[m] || m])]
+      .map(([m, l]) => `<button type="button" class="mode ${String(p.hvac_mode ?? "") === m ? "on" : ""}" data-act="pmode" data-value="${m}" ${ro ? "disabled" : ""}>${escS(l)}</button>`).join("");
+    const temp = p.temperature;
+    const stepper = `<div class="stepper"><button type="button" class="round" data-act="tstep" data-value="-0.5" ${ro ? "disabled" : ""}>−</button>
+      <span class="tval">${temp == null || temp === "" ? escS(this._t("keep")) : `${String(Number(temp).toFixed(1)).replace(".", ",")} <small>°C</small>`}</span>
+      <button type="button" class="round" data-act="tstep" data-value="0.5" ${ro ? "disabled" : ""}>+</button>
+      ${temp == null || temp === "" || ro ? "" : `<button type="button" class="text" data-act="tclear">${escS(this._t("keep"))}</button>`}</div>`;
+    const lists = ["fan_mode", "swing_mode", "swing_horizontal_mode"].map((f) => this._selectField("profiles", f, this._t(f), p[f], (this._cfg.modes[f] || []).map((v) => [v, v]))).join("");
+    const quiet = this._cfg.quiet_available || typeof p.quiet_outdoor === "boolean"
+      ? this._selectField("profiles", "quiet_outdoor", this._t("quiet_outdoor"), p.quiet_outdoor === true ? "on" : p.quiet_outdoor === false ? "off" : "", [["on", this._t("quiet_on")], ["off", this._t("quiet_off")]])
+      : "";
+    const used = this._usage(p.id);
+    const actions = ro ? "" : `<div class="row"><button type="button" class="outlined" data-act="dup" data-kind="profiles">${escS(this._t("duplicate"))}</button><button type="button" class="outlined danger" data-act="del" data-kind="profiles">${escS(this._t("delete"))}</button></div>`;
+    const detail = `<section class="detail">
+      <div class="dhead"><i style="background:${p.color}"></i><h2>${escS(p.name)}</h2></div>
+      ${this._textField("profiles", "name", this._t("name"), p.name)}
+      <span class="lab">${escS(this._t("mode"))}</span><div class="modes">${modes}</div>
+      <span class="lab">${escS(this._t("setpoint"))}</span>${stepper}
+      <div class="grid2">${lists}${quiet}</div>
+      ${this._numField("profiles", "outdoor_max_delta", this._t("outdoor_max_delta"), p.outdoor_max_delta, { min: 1, max: 30, help: this._t("outdoor_delta_help") })}
+      <p class="small">${escS(used.length ? this._tf("used_in", { u: used.join(" · ") }) : this._t("unused"))}</p>
+      ${actions}</section>`;
+    return `<div class="split">${list}${detail}</div>`;
+  }
+
+  _renderPlannings() {
+    const list = this._listPane("plannings", (pl) => `${pl.allowed.length} / ${this._cfg.profiles.length} · ${Object.keys(this._programs[pl.id] || {}).filter((g) => Object.keys(this._norm(this._programs[pl.id][g])).length).length} programme(s)`);
+    const pl = this._selected("plannings");
+    if (!pl) return `<div class="split">${list}</div>`;
+    const used = new Set(Object.values(this._programs[pl.id] || {}).flatMap((prog) => Object.values(prog).flatMap((sl) => sl.map(([, p]) => p))));
+    const chips = this._cfg.profiles.map((p) => {
+      const on = pl.allowed.includes(p.id);
+      const lock = on && used.has(p.id);
+      return `<button type="button" class="pchip ${on ? "on" : ""}" style="--c:${p.color}" data-act="allow" data-value="${escS(p.id)}" ${!this._admin || lock ? "disabled" : ""}><i></i>${escS(p.name)}${lock ? " 🔒" : ""}</button>`;
+    }).join("");
+    const actions = this._admin ? `<div class="row"><button type="button" class="outlined" data-act="dup" data-kind="plannings">${escS(this._t("dup_planning"))}</button><button type="button" class="outlined danger" data-act="del" data-kind="plannings">${escS(this._t("delete"))}</button></div>` : "";
+    return `<div class="split">${list}<section class="detail"><h2>${escS(pl.name)}</h2>
+      ${this._textField("plannings", "name", this._t("name"), pl.name)}
+      <span class="lab">${escS(this._t("allowed"))}</span><div class="pchips">${chips}</div><p class="small">${escS(this._t("allowed_help"))}</p>${actions}</section></div>`;
+  }
+
+  _pumpOf(eid) { return this._cfg.heat_pumps.find((h) => h.climates.includes(eid)); }
+  _name(eid) { return this._cfg.names?.[eid] || this._hass.states[eid]?.attributes?.friendly_name || eid; }
+
+  _pumpFields(hp, keyPrefix) {
+    const detected = hp.climates.map((e) => this._cfg.detected_compressors?.[e]).filter(Boolean);
+    const prio = this._selectField("heat_pumps", "priority", this._t("priority"), hp.priority || "", hp.climates.map((e) => [e, this._name(e)]), this._t("no_priority"))
+      .replace('data-kind="heat_pumps"', `data-kind="heat_pumps" data-id="${escS(hp.id)}"`);
+    const model = this._textField("heat_pumps", "model", this._t("model"), hp.model || "", `data-id="${escS(hp.id)}"`);
+    const max = this._numField("heat_pumps", "compressor_max", this._t("compressor_max"), hp.compressor_max, { min: 1, max: 15000, step: 1, help: this._t("compressor_max_help") })
+      .replace('data-kind="heat_pumps"', `data-kind="heat_pumps" data-id="${escS(hp.id)}"`);
+    const form = this._form(`${keyPrefix}-sensors`, [
+      { name: "compressors", selector: { entity: { domain: "sensor", multiple: true } } },
+      { name: "power_sensor", selector: { entity: { domain: "sensor" } } },
+      { name: "energy_sensor", selector: { entity: { domain: "sensor" } } },
+    ], { compressors: hp.compressors || [], power_sensor: hp.power_sensor || "", energy_sensor: hp.energy_sensor || "" },
+    (v) => {
+      for (const k of ["compressors", "power_sensor", "energy_sensor"]) {
+        const val = v[k];
+        if (val && (!Array.isArray(val) || val.length)) hp[k] = val; else delete hp[k];
+      }
+    },
+    { compressors: this._t("compressors"), power_sensor: this._t("power_sensor"), energy_sensor: this._t("energy_sensor") },
+    { compressors: this._tf("compressors_help", { d: detected.join(", ") || "—" }) });
+    return `<div class="grid2">${model}${prio}</div>${max}${form}`;
+  }
+
+  _renderGroups() {
+    const list = this._listPane("groups", (g) => {
+      const pumps = [...new Set(g.climates.map((e) => this._pumpOf(e)?.name).filter(Boolean))];
+      return `${g.climates.length} split(s)${pumps.length ? ` · ${pumps.join(", ")}` : ""}`;
+    });
+    const g = this._selected("groups");
+    if (!g) return `<div class="split">${list}</div>`;
+    const ro = !this._admin;
+    const climates = this._form(`g-${g.id}`, [{ name: "climates", selector: { entity: { domain: "climate", multiple: true } } }],
+      { climates: g.climates }, (v) => { g.climates = v.climates || []; }, { climates: this._t("climates") });
+    const offs = this._cfg.offsets || {};
+    const rows = g.climates.map((eid) => {
+      const hp = this._pumpOf(eid);
+      const sub = hp ? `${hp.name}${hp.priority === eid ? " · ★" : ""}` : "";
+      const inp = (side) => `<label class="field"><span>${escS(this._t(side === "heat" ? "offset_heat" : "offset_cool"))}</span><input type="number" step="0.5" min="-3" max="3" value="${offs[eid]?.[side] ?? 0}" data-offset="${escS(eid)}|${side}" ${ro ? "disabled" : ""}></label>`;
+      return `<div class="srow"><span class="col"><strong>${escS(this._name(eid))}</strong><span class="small">${escS(sub)}</span></span>${inp("heat")}${inp("cool")}</div>`;
+    }).join("");
+    const pumps = [...new Set(g.climates.map((e) => this._pumpOf(e)).filter(Boolean))];
+    const pumpBlocks = pumps.length
+      ? pumps.map((hp) => `<div class="sub"><h3>${escS(this._tf("pump_of_group", { n: hp.name }))}</h3><p class="small">${escS(this._t("pump_summary_help"))}</p>${this._pumpFields(hp, `gp-${g.id}-${hp.id}`)}</div>`).join("")
+      : `<p class="small">${escS(this._t("no_pump"))}</p>`;
+    const actions = ro ? "" : `<div class="row"><button type="button" class="outlined danger" data-act="del" data-kind="groups">${escS(this._t("delete"))}</button></div>`;
+    return `<div class="split">${list}<section class="detail"><h2>${escS(g.name)}</h2>
+      ${this._textField("groups", "name", this._t("name"), g.name)}${climates}
+      <h3>${escS(this._t("offsets"))}</h3>${rows}<p class="small">${escS(this._t("offsets_help"))}</p>
+      ${pumpBlocks}${actions}</section></div>`;
+  }
+
+  _renderPumps() {
+    const list = this._listPane("heat_pumps", (h) => `${h.climates.length} split(s)${h.model ? ` · ${h.model}` : ""}`);
+    const hp = this._selected("heat_pumps");
+    if (!hp) return `<div class="split">${list}</div>`;
+    const climates = this._form(`hp-${hp.id}`, [{ name: "climates", selector: { entity: { domain: "climate", multiple: true } } }],
+      { climates: hp.climates }, (v) => {
+        const wanted = v.climates || [];
+        const clash = wanted.map((e) => [e, this._cfg.heat_pumps.find((o) => o.id !== hp.id && o.climates.includes(e))]).find(([, o]) => o);
+        if (clash) { this._msg = { err: true, text: this._tf("other_pump", { s: this._name(clash[0]), h: clash[1].name }) }; return; }
+        hp.climates = wanted;
+        if (hp.priority && !wanted.includes(hp.priority)) delete hp.priority;
+      }, { climates: this._t("pump_climates") });
+    const actions = this._admin ? `<div class="row"><button type="button" class="outlined danger" data-act="del" data-kind="heat_pumps">${escS(this._t("delete"))}</button></div>` : "";
+    return `<div class="split">${list}<section class="detail"><h2>${escS(hp.name)}</h2>
+      ${this._textField("heat_pumps", "name", this._t("name"), hp.name, `data-id="${escS(hp.id)}"`)}${climates}${this._pumpFields(hp, `hp-${hp.id}`)}${actions}</section></div>`;
+  }
+
+  _itemFor(el) {
+    const kind = el.dataset.kind;
+    if (!kind) return null;
+    if (el.dataset.id) return this._cfg[kind].find((x) => x.id === el.dataset.id);
+    return this._selected(kind);
+  }
+
+  _listAction(act, el) {
+    const kind = el.dataset.kind;
+    const list = this._cfg[kind];
+    const cur = this._selected(kind);
+    if (act === "add") {
+      const base = this._t({ profiles: "new_profile", plannings: "new_planning", groups: "new_group", heat_pumps: "new_pump" }[kind]);
+      let name = base;
+      for (let i = 2; list.some((x) => normName(x.name) === normName(name)); i++) name = `${base} ${i}`;
+      const item = { id: newId(), name };
+      if (kind === "profiles") {
+        Object.assign(item, { hvac_mode: "heat", temperature: 20 });
+        for (const pl of this._cfg.plannings) pl.allowed.push(item.id);
+      }
+      if (kind === "plannings") { item.allowed = this._cfg.profiles.map((p) => p.id); item.programs = {}; this._programs[item.id] = {}; }
+      if (kind === "groups" || kind === "heat_pumps") item.climates = [];
+      list.push(item);
+      this._item[kind] = item.id;
+    } else if (act === "move" && cur) {
+      const i = list.indexOf(cur);
+      const j = i + Number(el.dataset.value);
+      if (j < 0 || j >= list.length) return;
+      [list[i], list[j]] = [list[j], list[i]];
+    } else if (act === "dup" && cur) {
+      const item = { ...clone(cur), id: newId(), name: this._tf("copy_of", { n: cur.name }) };
+      if (kind === "profiles") for (const pl of this._cfg.plannings) if (pl.allowed.includes(cur.id)) pl.allowed.push(item.id);
+      if (kind === "plannings") { item.copy_from = cur.id; this._programs[item.id] = clone(this._programs[cur.id] || {}); }
+      list.splice(list.indexOf(cur) + 1, 0, item);
+      this._item[kind] = item.id;
+    } else if (act === "del" && cur) {
+      if ((kind === "profiles" || kind === "plannings") && list.length <= 1) { this._msg = { err: true, text: this._t("keep_one") }; this._render(); return; }
+      if (kind === "profiles") {
+        const used = this._usage(cur.id);
+        if (used.length) { this._msg = { err: true, text: this._tf("in_use", { u: used.join(" · ") }) }; this._render(); return; }
+        for (const pl of this._cfg.plannings) pl.allowed = pl.allowed.filter((x) => x !== cur.id);
+      }
+      if (kind === "plannings") delete this._programs[cur.id];
+      if (kind === "groups") for (const pl of Object.values(this._programs)) delete pl[cur.id];
+      list.splice(list.indexOf(cur), 1);
+      this._item[kind] = list[0]?.id;
+    }
+    if (kind === "profiles") for (const p of list) p.color ??= this._colorOf(p.name);
+    this._changed();
   }
 
   // ------------------------------------------------------------------ actions
@@ -499,7 +887,8 @@ class SplitSchedulerSettingsCard extends HTMLElement {
     const day = Number(el.dataset.day);
     const idx = Number(el.dataset.idx);
     switch (act) {
-      case "tab": this._tab = value; this._render(); return;
+      case "tab": this._tab = value; this._msg = null; this._render(); return;
+      case "item": this._item[el.dataset.kind] = value; this._msg = null; this._render(); return;
       case "planning": this._planning = value; this._sel = null; this._render(); return;
       case "group": this._group = value; this._sel = null; this._render(); return;
       case "mday": this._day = Number(value); this._sel = null; this._render(); return;
@@ -528,6 +917,20 @@ class SplitSchedulerSettingsCard extends HTMLElement {
       case "copy-day-do": this._copyDay(); break;
       case "copy-week-do": this._copyWeek(); break;
       case "cancel": this._reset(); this._msg = null; this._render(); break;
+      case "add": case "move": case "dup": case "del": this._listAction(act, el); break;
+      case "pmode": { const p = this._selected("profiles"); if (value) p.hvac_mode = value; else delete p.hvac_mode; this._changed(); break; }
+      case "tstep": {
+        const p = this._selected("profiles");
+        const t = p.temperature == null ? 20 : Number(p.temperature) + Number(value);
+        p.temperature = Math.min(35, Math.max(5, Math.round(t * 2) / 2));
+        this._changed(); break;
+      }
+      case "tclear": delete this._selected("profiles").temperature; this._changed(); break;
+      case "allow": {
+        const pl = this._selected("plannings");
+        pl.allowed = pl.allowed.includes(value) ? pl.allowed.filter((x) => x !== value) : this._cfg.profiles.map((p) => p.id).filter((x) => x === value || pl.allowed.includes(x));
+        this._changed(); break;
+      }
       case "save": this._save(); break;
       default: break;
     }
@@ -543,6 +946,36 @@ class SplitSchedulerSettingsCard extends HTMLElement {
 
   _onChange(ev) {
     const el = ev.target;
+    if (this._admin && el.dataset?.offset) {
+      const [eid, side] = el.dataset.offset.split("|");
+      const v = Math.round(Math.min(3, Math.max(-3, Number(el.value) || 0)) * 2) / 2;
+      const offs = (this._cfg.offsets ??= {});
+      const split = { ...(offs[eid] || {}) };
+      if (v) split[side] = v; else delete split[side];
+      if (Object.keys(split).length) offs[eid] = split; else delete offs[eid];
+      this._changed();
+      return;
+    }
+    if (this._admin && el.dataset?.field) {
+      const item = this._itemFor(el);
+      if (!item) return;
+      const field = el.dataset.field;
+      let v = el.value;
+      if (field === "name") {
+        v = v.trim();
+        const clash = this._cfg[el.dataset.kind].some((x) => x !== item && normName(x.name) === normName(v));
+        if (!v || clash) { this._msg = { err: true, text: !v ? this._t("name") : `« ${v} »` }; this._render(); return; }
+        item.name = v;
+        if (el.dataset.kind === "profiles") item.color = this._colorOf(v);
+      } else if (field === "quiet_outdoor") {
+        if (v === "on") item.quiet_outdoor = true; else if (v === "off") item.quiet_outdoor = false; else delete item.quiet_outdoor;
+      } else if (el.dataset.num) {
+        if (v === "") delete item[field]; else item[field] = Number(v);
+      } else if (v === "") delete item[field];
+      else item[field] = v;
+      this._changed();
+      return;
+    }
     if (el.dataset?.act !== "time" || !this._admin || !this._sel) return;
     const { day, idx } = this._sel;
     const slots = clone(this._slots(day));
@@ -688,15 +1121,9 @@ class SplitSchedulerSettingsCard extends HTMLElement {
 
   async _save() {
     const programs = {};
-    for (const pl of this._cfg.plannings) {
-      const ids = new Set([...Object.keys(pl.programs || {}), ...Object.keys(this._programs[pl.id] || {})]);
-      for (const gid of ids) {
-        const now = this._norm(this._programs[pl.id]?.[gid]);
-        if (JSON.stringify(this._norm(pl.programs?.[gid])) !== JSON.stringify(now)) (programs[pl.id] ??= {})[gid] = now;
-      }
-    }
-    const msg = { type: "split_scheduler/config/save", programs };
-    if (JSON.stringify(this._cfg.settings) !== JSON.stringify(this._settings)) msg.settings = this._settings;
+    for (const [plid, gid, program] of Object.values(this._programChanges())) (programs[plid] ??= {})[gid] = program;
+    const msg = { type: "split_scheduler/config/save", programs, ...this._collectionChanges() };
+    if (JSON.stringify(this._orig.settings) !== JSON.stringify(this._settings)) msg.settings = this._settings;
     this._saving = true;
     this._render();
     try {
@@ -705,6 +1132,8 @@ class SplitSchedulerSettingsCard extends HTMLElement {
       // la configuration enregistrée devient la référence (l'intégration se recharge)
       for (const pl of this._cfg.plannings) pl.programs = clone(this._programs[pl.id] || {});
       this._cfg.settings = clone(this._settings);
+      this._server = clone(this._cfg);
+      this._orig = clone(this._cfg);
       setTimeout(() => this._load(), 2500);
     } catch (err) {
       this._msg = { err: true, text: err?.message || String(err) };
@@ -789,6 +1218,39 @@ const SETTINGS_CSS = `
   .line .pname { flex: 1; font-size: 15px; }
   .line .chev { color: var(--secondary-text-color); font-size: 18px; }
   .general { max-width: 640px; }
+  .split { display: grid; grid-template-columns: minmax(220px, 300px) 1fr; gap: 16px; align-items: start; }
+  .narrow .split { grid-template-columns: 1fr; }
+  .list { display: flex; flex-direction: column; gap: 4px; padding: 10px; border: 1px solid var(--divider-color); border-radius: 12px; }
+  .lhead { display: flex; align-items: center; justify-content: space-between; padding: 2px 4px 6px; font-weight: 500; }
+  .filled.sm { height: 32px; padding: 0 12px; font-size: 13px; }
+  .li { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border: 0; border-radius: 10px; background: none; text-align: left; }
+  .li.on { background: color-mix(in srgb, var(--primary-color) 14%, transparent); }
+  .li i, .dhead i { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+  .li .col, .srow .col { display: flex; flex-direction: column; min-width: 0; }
+  .li strong { font-weight: 500; font-size: 14.5px; }
+  .li .small { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .detail { display: flex; flex-direction: column; gap: 12px; padding: 14px 16px; border: 1px solid var(--divider-color); border-radius: 12px; min-width: 0; }
+  .detail h2 { margin: 0; font-size: 18px; font-weight: 500; }
+  .detail h3, .sub h3 { margin: 6px 0 0; font-size: 15px; font-weight: 500; }
+  .dhead { display: flex; align-items: center; gap: 10px; }
+  .field.wide { max-width: 420px; }
+  .field em { font-style: normal; font-size: 12px; }
+  .field select { height: 40px; padding: 0 8px; border-radius: 8px; border: 1px solid var(--divider-color); background: var(--card-background-color); color: var(--primary-text-color); font: inherit; font-size: 15px; }
+  .grid2 { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 10px 14px; }
+  .grid2 .field { max-width: none; }
+  .modes { display: flex; flex-wrap: wrap; gap: 6px; }
+  .mode { height: 36px; padding: 0 12px; border-radius: 8px; border: 1px solid var(--divider-color); background: none; font-size: 13.5px; }
+  .mode.on { border-color: var(--primary-color); background: color-mix(in srgb, var(--primary-color) 14%, transparent); font-weight: 500; }
+  .stepper { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+  .round { width: 42px; height: 42px; border-radius: 50%; border: 1px solid var(--divider-color); background: none; font-size: 20px; }
+  .tval { font-size: 28px; font-weight: 300; min-width: 110px; text-align: center; }
+  .tval small { font-size: 15px; color: var(--secondary-text-color); }
+  .srow { display: grid; grid-template-columns: 1fr 130px 130px; gap: 10px; align-items: end; padding: 6px 0; border-bottom: 1px solid var(--divider-color); }
+  .narrow .srow { grid-template-columns: 1fr 1fr; }
+  .narrow .srow .col { grid-column: 1 / -1; }
+  .sub { display: flex; flex-direction: column; gap: 10px; padding-top: 8px; border-top: 1px solid var(--divider-color); }
+  .danger { color: var(--error-color, #db4437); }
+  .haform { max-width: 560px; }
 `;
 
 if (!customElements.get("split-scheduler-settings-card")) {
