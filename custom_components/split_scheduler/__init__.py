@@ -12,9 +12,10 @@ from homeassistant.helpers import config_validation as cv, device_registry as dr
 from homeassistant.helpers.typing import ConfigType
 from homeassistant.loader import async_get_integration
 
-from . import websocket
+from . import settings_api, websocket
 from .const import (
     CARD_FILENAME,
+    SETTINGS_CARD_FILENAME,
     CARD_URL_BASE,
     CONF_GROUPS,
     CONF_MIGRATIONS,
@@ -44,6 +45,7 @@ CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     """Carte du tableau de bord et API websocket (une fois pour toutes)."""
     websocket.async_register(hass)
+    settings_api.async_register(hass)
     version = (await async_get_integration(hass, DOMAIN)).version
     hass.data[f"{DOMAIN}_version"] = str(version)
     await hass.http.async_register_static_paths(
@@ -55,6 +57,7 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     )
     # Chargée sur tous les tableaux de bord : la carte apparaît dans « Ajouter une carte ».
     add_extra_js_url(hass, f"{CARD_URL_BASE}/{CARD_FILENAME}?v={version}")
+    add_extra_js_url(hass, f"{CARD_URL_BASE}/{SETTINGS_CARD_FILENAME}?v={version}")
     return True
 
 

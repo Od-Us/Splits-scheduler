@@ -384,6 +384,34 @@ La frise du compresseur et la courbe lisent l'historique de Home Assistant
 
 Sans liste `groups`, tous les groupes sont affichés avec les réglages par défaut.
 
+## Carte de réglages
+
+La carte **« Réglages de la programmation des splits »** (*Ajouter une carte*,
+idéalement dans une vue de type *Panneau*) regroupe les réglages de
+l'intégration dans le tableau de bord, en onglets : réglages généraux, pompes à
+chaleur, groupes, types de planning, profils, programmation.
+
+- **Programmation** : choix du planning et du groupe, puis une **frise par
+  jour** aux couleurs des profils. On **glisse une poignée** pour déplacer
+  l'heure d'un changement (par pas de 15 min), on **clique sur une plage** pour
+  choisir son profil (seuls les profils autorisés dans le planning sont
+  proposés), *Couper la plage en deux* ou *Supprimer ce changement* ; un
+  double-clic ajoute un changement. Le début de journée hérité de la veille est
+  hachuré. *Copier un jour vers…* et *Copier la semaine vers d'autres groupes /
+  plannings* (refusé si un profil n'est pas autorisé dans un planning de
+  destination). Les conflits avec une pompe à chaleur s'affichent en tête. Sur
+  téléphone : choix du jour en pastilles et liste des changements.
+- **Réglages généraux** : capteur extérieur, préréglage Normal et silence à
+  chaque commande.
+- Les autres onglets arrivent dans une prochaine version ; en attendant, un
+  bouton ouvre le menu Paramètres de l'intégration.
+
+Les modifications restent en attente (« 2 modifications non enregistrées »)
+jusqu'à **Enregistrer** ; *Annuler* revient à la configuration enregistrée.
+L'enregistrement applique les mêmes contrôles que le menu Paramètres et recharge
+l'intégration. Seuls les **administrateurs** peuvent modifier : les autres
+utilisateurs voient la carte **en lecture seule**.
+
 ## Consigne adaptée à la température extérieure
 
 Par canicule (ou grand froid), une consigne habituelle peut être hors de portée

@@ -138,6 +138,7 @@ def default_options() -> dict:
 # ---------------------------------------------------------------------- carte
 
 CARD_FILENAME = "split-scheduler-card.js"
+SETTINGS_CARD_FILENAME = "split-scheduler-settings.js"
 CARD_URL_BASE = "/split_scheduler_static"
 
 # Couleurs des profils sur la carte (repérés par leur nom, sans accents ni casse)
