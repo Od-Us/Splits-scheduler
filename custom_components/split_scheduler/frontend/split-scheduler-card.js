@@ -26,7 +26,7 @@
  *     <id de la pompe>: { sensors: [sensor.x], names: { sensor.x: Libellé } }
  */
 
-const CARD_VERSION = "1.18.1";
+const CARD_VERSION = "1.18.2";
 const ICON_URL = new URL("icon.png", import.meta.url).href;
 
 const GROUP_DEFAULTS = {
@@ -2500,7 +2500,14 @@ class SplitSchedulerCardEditor extends HTMLElement {
   }
 
   setConfig(config) {
-    this._config = { show_global_planning: true, show_timeline: true, groups: [], ...config };
+    const next = { show_global_planning: true, show_timeline: true, groups: [], ...config };
+    // Home Assistant renvoie la configuration que l'éditeur vient d'émettre : ne pas tout
+    // reconstruire, sinon le champ en cours de saisie perd le focus (clavier refermé sur mobile).
+    if (this._emitted && JSON.stringify(config) === this._emitted) {
+      this._config = next;
+      return;
+    }
+    this._config = next;
     this._build();
   }
 
@@ -2521,6 +2528,7 @@ class SplitSchedulerCardEditor extends HTMLElement {
 
   _emit(config) {
     this._config = config;
+    this._emitted = JSON.stringify(config);
     this.dispatchEvent(new CustomEvent("config-changed", { detail: { config }, bubbles: true, composed: true }));
   }
 
