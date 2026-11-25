@@ -48,7 +48,9 @@ from .const import (
     allowed_profiles,
     describe_profile,
     ordered,
-    profile_color,
+    ATTR_COLOR,
+    color_of,
+    valid_color,
 )
 from .const import _EXTRA_COLORS, _PROFILE_COLORS
 
@@ -119,7 +121,7 @@ def config_view(hass: HomeAssistant, options: dict, is_admin: bool) -> dict[str,
             for gid, g in groups.items()
         ],
         "profiles": [
-            {**{k: v for k, v in p.items() if k != "pos"}, "id": pid, "color": profile_color(p["name"]),
+            {**{k: v for k, v in p.items() if k != "pos"}, "id": pid, "color": color_of(p), "color_set": p.get(ATTR_COLOR),
              "summary": describe_profile(p, language)}
             for pid, p in profiles.items()
         ],
@@ -255,6 +257,10 @@ def _profiles(items: Any) -> dict:
                 raise ValueError(f"{item['name']} : mode inconnu")
             else:
                 profile[setting] = str(value)
+        if item.get("color_set"):
+            if (color := valid_color(item["color_set"])) is None:
+                raise ValueError(f"{item['name']} : couleur invalide")
+            profile[ATTR_COLOR] = color
         if isinstance(item.get(ATTR_QUIET), bool):
             profile[ATTR_QUIET] = item[ATTR_QUIET]
         if item.get(ATTR_OUTDOOR_DELTA) not in (None, ""):

@@ -148,13 +148,15 @@
           "swing_mode": "Swing (vertical)",
           "swing_horizontal_mode": "Horizontal swing",
           "outdoor_max_delta": "Maximum gap to outdoor",
-          "quiet_outdoor": "Quiet outdoor unit 🤫"
+          "quiet_outdoor": "Quiet outdoor unit 🤫",
+          "color": "Colour (optional)"
         },
         "data_description": {
           "fan_mode": "Values offered by your splits; you can also type one.",
           "temperature": "Ignored in Off and Fan only modes.",
           "outdoor_max_delta": "Cooling: the target never goes more than this gap below the outdoor temperature (1 h average); e.g. 26 °C with a 10 °C gap gives 29 °C when it is 39 °C outside. Heating: the target never goes more than this gap above it. Empty: no adaptation.",
-          "quiet_outdoor": "Less noise outside, a little less power. Set through Faikout's “Quiet outdoor” switch (“HA switches” option); a split without it ignores it. Applies to the whole outdoor unit. Empty: unchanged."
+          "quiet_outdoor": "Less noise outside, a little less power. Set through Faikout's “Quiet outdoor” switch (“HA switches” option); a split without it ignores it. Applies to the whole outdoor unit. Empty: unchanged.",
+          "color": "Profile colour on the card and timelines. Suggested from the name."
         }
       },
       "profile_edit_pick": {
@@ -174,13 +176,15 @@
           "swing_mode": "Swing (vertical)",
           "swing_horizontal_mode": "Horizontal swing",
           "outdoor_max_delta": "Maximum gap to outdoor",
-          "quiet_outdoor": "Quiet outdoor unit 🤫"
+          "quiet_outdoor": "Quiet outdoor unit 🤫",
+          "color": "Colour (optional)"
         },
         "data_description": {
           "fan_mode": "Values offered by your splits; you can also type one.",
           "temperature": "Ignored in Off and Fan only modes.",
           "outdoor_max_delta": "Cooling: the target never goes more than this gap below the outdoor temperature (1 h average); e.g. 26 °C with a 10 °C gap gives 29 °C when it is 39 °C outside. Heating: the target never goes more than this gap above it. Empty: no adaptation.",
-          "quiet_outdoor": "Less noise outside, a little less power. Set through Faikout's “Quiet outdoor” switch (“HA switches” option); a split without it ignores it. Applies to the whole outdoor unit. Empty: unchanged."
+          "quiet_outdoor": "Less noise outside, a little less power. Set through Faikout's “Quiet outdoor” switch (“HA switches” option); a split without it ignores it. Applies to the whole outdoor unit. Empty: unchanged.",
+          "color": "Profile colour on the card and timelines. Suggested from the name."
         }
       },
       "profile_delete": {

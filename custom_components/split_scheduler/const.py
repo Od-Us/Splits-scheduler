@@ -157,6 +157,25 @@ _PROFILE_COLORS = (
 _EXTRA_COLORS = ("#3f51b5", "#ec407a", "#8d6e63", "#5c6bc0", "#00acc1", "#7cb342")
 
 
+ATTR_COLOR = "color"
+_HEX = __import__("re").compile(r"^#[0-9a-fA-F]{6}$")
+
+
+def color_of(profile: dict) -> str:
+    """Couleur d'un profil : celle choisie, sinon d'après son nom."""
+    chosen = profile.get(ATTR_COLOR)
+    if isinstance(chosen, str) and _HEX.match(chosen):
+        return chosen.lower()
+    return profile_color(profile.get("name", ""))
+
+
+def valid_color(value) -> str | None:
+    """« #rrggbb » (ou [r, g, b]) -> couleur normalisée, sinon None."""
+    if isinstance(value, (list, tuple)) and len(value) == 3:
+        value = "#" + "".join(f"{max(0, min(255, int(c))):02x}" for c in value)
+    return value.lower() if isinstance(value, str) and _HEX.match(value) else None
+
+
 def profile_color(name: str) -> str:
     """Couleur d'un profil : d'après son nom, sinon une couleur stable."""
     from .planning import normalize  # import local : planning ne dépend pas de HA

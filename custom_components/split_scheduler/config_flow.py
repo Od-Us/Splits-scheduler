@@ -17,6 +17,7 @@ from homeassistant.config_entries import (
 from homeassistant.core import callback
 from homeassistant.helpers.selector import (
     BooleanSelector,
+    ColorRGBSelector,
     EntitySelector,
     EntitySelectorConfig,
     NumberSelector,
@@ -32,6 +33,7 @@ from homeassistant.helpers.selector import (
 )
 
 from .const import (
+    ATTR_COLOR,
     ATTR_FAN_MODE,
     ATTR_HVAC_MODE,
     ATTR_SWING_HORIZONTAL_MODE,
@@ -65,7 +67,10 @@ from .const import (
     TITLE,
     WEEKDAY_KEYS,
     allowed_profiles,
+    color_of,
     default_options,
+    profile_color,
+    valid_color,
     describe_profile,
     ordered,
     with_positions,
@@ -496,6 +501,9 @@ class SplitSchedulerOptionsFlow(OptionsFlow):
                     profile[ATTR_QUIET] = user_input[ATTR_QUIET] == "on"
                 if user_input.get(ATTR_OUTDOOR_DELTA) not in (None, ""):
                     profile[ATTR_OUTDOOR_DELTA] = float(user_input[ATTR_OUTDOOR_DELTA])
+                color = valid_color(user_input.get(ATTR_COLOR))
+                if color is not None and color != profile_color(name):  # sinon : couleur d'après le nom
+                    profile[ATTR_COLOR] = color
                 new_id = profile_id or _new_id()
                 if profile_id is None:  # nouveau profil : autorisé dans tous les plannings
                     for planning in self.opts[CONF_PLANNINGS].values():
@@ -545,7 +553,13 @@ class SplitSchedulerOptionsFlow(OptionsFlow):
                     mode=SelectSelectorMode.DROPDOWN,
                 )
             )
+        fields[vol.Optional(ATTR_COLOR)] = ColorRGBSelector()
         shown = dict(values)
+        if isinstance(values.get(ATTR_COLOR), list):
+            shown[ATTR_COLOR] = values[ATTR_COLOR]
+        elif values.get("name") or values.get(ATTR_COLOR):
+            hexa = color_of(values)
+            shown[ATTR_COLOR] = [int(hexa[i:i + 2], 16) for i in (1, 3, 5)]
         if isinstance(shown.get(ATTR_QUIET), bool):
             shown[ATTR_QUIET] = "on" if shown[ATTR_QUIET] else "off"
         schema = self.add_suggested_values_to_schema(vol.Schema(fields), shown)

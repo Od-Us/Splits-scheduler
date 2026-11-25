@@ -148,13 +148,15 @@
           "swing_mode": "Oscillation (verticale)",
           "swing_horizontal_mode": "Oscillation horizontale",
           "outdoor_max_delta": "Écart maximal avec l'extérieur",
-          "quiet_outdoor": "Unité extérieure silencieuse 🤫"
+          "quiet_outdoor": "Unité extérieure silencieuse 🤫",
+          "color": "Couleur (facultatif)"
         },
         "data_description": {
           "fan_mode": "Valeurs proposées par vos splits ; vous pouvez aussi en saisir une.",
           "temperature": "Ignorée en mode Arrêt et Ventilation seule.",
           "outdoor_max_delta": "Climatisation : la consigne ne descend jamais à plus de cet écart sous la température extérieure (moyenne sur 1 h) ; par exemple 26 °C et 10 °C d'écart donnent 29 °C quand il fait 39 °C dehors. Chauffage : la consigne ne monte jamais à plus de cet écart au-dessus. Vide : pas d'adaptation.",
-          "quiet_outdoor": "Moins de bruit dehors, un peu moins de puissance. Réglé par l'interrupteur « Quiet outdoor » de Faikout (option « HA switches ») ; un split sans cet interrupteur l'ignore. Vaut pour toute l'unité extérieure. Vide : ne pas modifier."
+          "quiet_outdoor": "Moins de bruit dehors, un peu moins de puissance. Réglé par l'interrupteur « Quiet outdoor » de Faikout (option « HA switches ») ; un split sans cet interrupteur l'ignore. Vaut pour toute l'unité extérieure. Vide : ne pas modifier.",
+          "color": "Couleur du profil sur la carte et dans les frises. Proposée d'après le nom."
         }
       },
       "profile_edit_pick": {
@@ -174,13 +176,15 @@
           "swing_mode": "Oscillation (verticale)",
           "swing_horizontal_mode": "Oscillation horizontale",
           "outdoor_max_delta": "Écart maximal avec l'extérieur",
-          "quiet_outdoor": "Unité extérieure silencieuse 🤫"
+          "quiet_outdoor": "Unité extérieure silencieuse 🤫",
+          "color": "Couleur (facultatif)"
         },
         "data_description": {
           "fan_mode": "Valeurs proposées par vos splits ; vous pouvez aussi en saisir une.",
           "temperature": "Ignorée en mode Arrêt et Ventilation seule.",
           "outdoor_max_delta": "Climatisation : la consigne ne descend jamais à plus de cet écart sous la température extérieure (moyenne sur 1 h) ; par exemple 26 °C et 10 °C d'écart donnent 29 °C quand il fait 39 °C dehors. Chauffage : la consigne ne monte jamais à plus de cet écart au-dessus. Vide : pas d'adaptation.",
-          "quiet_outdoor": "Moins de bruit dehors, un peu moins de puissance. Réglé par l'interrupteur « Quiet outdoor » de Faikout (option « HA switches ») ; un split sans cet interrupteur l'ignore. Vaut pour toute l'unité extérieure. Vide : ne pas modifier."
+          "quiet_outdoor": "Moins de bruit dehors, un peu moins de puissance. Réglé par l'interrupteur « Quiet outdoor » de Faikout (option « HA switches ») ; un split sans cet interrupteur l'ignore. Vaut pour toute l'unité extérieure. Vide : ne pas modifier.",
+          "color": "Couleur du profil sur la carte et dans les frises. Proposée d'après le nom."
         }
       },
       "profile_delete": {

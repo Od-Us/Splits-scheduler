@@ -10,7 +10,7 @@
  * programmation hebdomadaire ; les autres onglets renvoient au menu Paramètres.
  */
 
-const SETTINGS_VERSION = "1.20.0";
+const SETTINGS_VERSION = "1.21.0";
 const STEP = 15; // minutes : pas des poignées
 const DAY_MIN = 1440;
 const SETTINGS_URL = "/config/integrations/integration/split_scheduler";
@@ -80,6 +80,9 @@ const TXT = {
     new_pump: "Nouvelle pompe à chaleur",
     copy_of: "{n} (copie)",
     keep: "Ne pas modifier",
+    color: "Couleur",
+    color_auto: "Automatique",
+    color_custom: "Autre couleur…",
     hvac: { off: "Arrêt", heat: "Chauffage", cool: "Climatisation", heat_cool: "Chaud / froid", auto: "Automatique", dry: "Déshumidification", fan_only: "Ventilation" },
     mode: "Mode",
     setpoint: "Consigne",
@@ -185,6 +188,9 @@ const TXT = {
     new_pump: "New heat pump",
     copy_of: "{n} (copy)",
     keep: "Do not change",
+    color: "Colour",
+    color_auto: "Automatic",
+    color_custom: "Other colour…",
     hvac: { off: "Off", heat: "Heat", cool: "Cool", heat_cool: "Heat/Cool", auto: "Auto", dry: "Dry", fan_only: "Fan only" },
     mode: "Mode",
     setpoint: "Setpoint",
@@ -270,6 +276,8 @@ function programConflicts(own, other, sideOf) {
 }
 
 
+// Couleurs proposées (bien distinctes, lisibles avec un texte blanc)
+const SWATCHES = ["#e53935", "#fb8c00", "#fdd835", "#7cb342", "#43a047", "#26a69a", "#039be5", "#1e88e5", "#5c6bc0", "#8e24aa", "#d81b60", "#6d4c41", "#757575"];
 const newId = () => Math.random().toString(16).slice(2, 10);
 const normName = (n) => String(n || "").normalize("NFKD").replace(/[̀-ͯ]/g, "").toLowerCase().split(/\s+/).filter(Boolean).join(" ");
 const KINDS = { profiles: "profiles", plannings: "plannings", groups: "groups", heat_pumps: "heat_pumps" };
@@ -381,7 +389,7 @@ class SplitSchedulerSettingsCard extends HTMLElement {
   /** Collections modifiées (profils, plannings, groupes, pompes, décalages) : valeurs à envoyer. */
   _collectionChanges() {
     const strip = {
-      profiles: (p) => { const { color, summary, ...rest } = p; return rest; },
+      profiles: (p) => { const { color, summary, ...rest } = p; if (rest.color_set == null) delete rest.color_set; return rest; },
       plannings: (p) => ({ id: p.id, name: p.name, allowed: p.allowed, ...(p.copy_from ? { copy_from: p.copy_from } : {}) }),
       groups: (g) => ({ id: g.id, name: g.name, climates: g.climates }),
       heat_pumps: (h) => { const { priority_name, ...rest } = h; return rest; },
@@ -726,6 +734,7 @@ class SplitSchedulerSettingsCard extends HTMLElement {
     const detail = `<section class="detail">
       <div class="dhead"><i style="background:${p.color}"></i><h2>${escS(p.name)}</h2></div>
       ${this._textField("profiles", "name", this._t("name"), p.name)}
+      <span class="lab">${escS(this._t("color"))}</span>${this._colorPicker(p)}
       <span class="lab">${escS(this._t("mode"))}</span><div class="modes">${modes}</div>
       <span class="lab">${escS(this._t("setpoint"))}</span>${stepper}
       <div class="grid2">${lists}${quiet}</div>
@@ -733,6 +742,23 @@ class SplitSchedulerSettingsCard extends HTMLElement {
       <p class="small">${escS(used.length ? this._tf("used_in", { u: used.join(" · ") }) : this._t("unused"))}</p>
       ${actions}</section>`;
     return `<div class="split">${list}${detail}</div>`;
+  }
+
+  _colorPicker(p) {
+    const ro = !this._admin;
+    const auto = this._colorOf(p.name);
+    const swatches = SWATCHES.map((c) => `<button type="button" class="sw ${p.color_set && p.color.toLowerCase() === c ? "on" : ""}" style="background:${c}" data-act="color" data-value="${c}" aria-label="${c}" ${ro ? "disabled" : ""}></button>`).join("");
+    return `<div class="swatches">
+      <button type="button" class="sw auto ${p.color_set ? "" : "on"}" style="--c:${auto}" data-act="color" data-value="" ${ro ? "disabled" : ""}>${escS(this._t("color_auto"))}</button>
+      ${swatches}
+      <label class="sw custom" title="${escS(this._t("color_custom"))}" style="background:${p.color}"><input type="color" value="${p.color}" data-colorpick="1" ${ro ? "disabled" : ""}></label></div>`;
+  }
+
+  _setColor(value) {
+    const p = this._selected("profiles");
+    if (value) { p.color_set = value.toLowerCase(); p.color = p.color_set; }
+    else { delete p.color_set; p.color = this._colorOf(p.name); }
+    this._changed();
   }
 
   _renderPlannings() {
@@ -926,6 +952,7 @@ class SplitSchedulerSettingsCard extends HTMLElement {
         this._changed(); break;
       }
       case "tclear": delete this._selected("profiles").temperature; this._changed(); break;
+      case "color": this._setColor(value); break;
       case "allow": {
         const pl = this._selected("plannings");
         pl.allowed = pl.allowed.includes(value) ? pl.allowed.filter((x) => x !== value) : this._cfg.profiles.map((p) => p.id).filter((x) => x === value || pl.allowed.includes(x));
@@ -946,6 +973,7 @@ class SplitSchedulerSettingsCard extends HTMLElement {
 
   _onChange(ev) {
     const el = ev.target;
+    if (this._admin && el.dataset?.colorpick) { this._setColor(el.value); return; }
     if (this._admin && el.dataset?.offset) {
       const [eid, side] = el.dataset.offset.split("|");
       const v = Math.round(Math.min(3, Math.max(-3, Number(el.value) || 0)) * 2) / 2;
@@ -966,7 +994,7 @@ class SplitSchedulerSettingsCard extends HTMLElement {
         const clash = this._cfg[el.dataset.kind].some((x) => x !== item && normName(x.name) === normName(v));
         if (!v || clash) { this._msg = { err: true, text: !v ? this._t("name") : `« ${v} »` }; this._render(); return; }
         item.name = v;
-        if (el.dataset.kind === "profiles") item.color = this._colorOf(v);
+        if (el.dataset.kind === "profiles" && !item.color_set) item.color = this._colorOf(v);
       } else if (field === "quiet_outdoor") {
         if (v === "on") item.quiet_outdoor = true; else if (v === "off") item.quiet_outdoor = false; else delete item.quiet_outdoor;
       } else if (el.dataset.num) {
@@ -1251,6 +1279,14 @@ const SETTINGS_CSS = `
   .sub { display: flex; flex-direction: column; gap: 10px; padding-top: 8px; border-top: 1px solid var(--divider-color); }
   .danger { color: var(--error-color, #db4437); }
   .haform { max-width: 560px; }
+  .swatches { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .sw { width: 32px; height: 32px; border-radius: 50%; border: 2px solid transparent; padding: 0; box-shadow: inset 0 0 0 1px rgba(0,0,0,.12); }
+  .sw.on { border-color: var(--primary-text-color); box-shadow: inset 0 0 0 2px var(--card-background-color, #fff); }
+  .sw.auto { width: auto; padding: 0 12px 0 28px; border-radius: 16px; position: relative; background: none; border: 1px solid var(--divider-color); font-size: 13px; }
+  .sw.auto::before { content: ""; position: absolute; left: 8px; top: 50%; width: 12px; height: 12px; margin-top: -6px; border-radius: 50%; background: var(--c); }
+  .sw.auto.on { border: 2px solid var(--primary-text-color); }
+  .sw.custom { position: relative; overflow: hidden; cursor: pointer; display: inline-block; background-image: conic-gradient(#e53935, #fdd835, #43a047, #039be5, #8e24aa, #e53935) !important; }
+  .sw.custom input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
 `;
 
 if (!customElements.get("split-scheduler-settings-card")) {

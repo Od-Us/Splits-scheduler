@@ -115,3 +115,24 @@ async def test_save_collections(hass: HomeAssistant, freezer, hass_ws_client):
     assert (await client.receive_json())["success"]
     await hass.async_block_till_done()
     assert "g2" not in entry.options["plannings"]["normal"]["programs"]
+
+
+async def test_profile_color(hass: HomeAssistant, freezer, hass_ws_client):
+    entry = await _setup(hass, freezer)
+    client = await hass_ws_client(hass)
+    await client.send_json({"id": 1, "type": "split_scheduler/config/get"})
+    cfg = (await client.receive_json())["result"]
+    profiles = [{k: v for k, v in p.items() if k not in ("color", "summary")} for p in cfg["profiles"]]
+    eco = next(p for p in profiles if p["id"] == "eco")
+    assert eco["color_set"] is None
+    eco["color_set"] = "#8E24AA"
+    await client.send_json({"id": 2, "type": "split_scheduler/config/save", "profiles": profiles})
+    assert (await client.receive_json())["success"]
+    await hass.async_block_till_done()
+    assert entry.options["profiles"]["eco"]["color"] == "#8e24aa"
+    await client.send_json({"id": 3, "type": "split_scheduler/info"})
+    info = (await client.receive_json())["result"]
+    assert next(p for p in info["profiles"] if p["id"] == "eco")["color"] == "#8e24aa"
+    eco["color_set"] = "rouge"
+    await client.send_json({"id": 4, "type": "split_scheduler/config/save", "profiles": profiles})
+    assert "couleur invalide" in (await client.receive_json())["error"]["message"]

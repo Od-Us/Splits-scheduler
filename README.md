@@ -404,7 +404,8 @@ chaleur, groupes, types de planning, profils, programmation.
 - **Réglages généraux** : capteur extérieur, préréglage Normal et silence à
   chaque commande.
 - **Profils** : liste à gauche (↑ / ↓ pour l'ordre), réglages à droite : nom,
-  mode en boutons, consigne avec − / +, ventilation, oscillations, unité
+  **couleur** (*Automatique* d'après le nom, une des teintes proposées ou
+  *Autre couleur…*), mode en boutons, consigne avec − / +, ventilation, oscillations, unité
   extérieure silencieuse (listes : *Ne pas modifier* ou une valeur annoncée par
   les splits), écart avec l'extérieur, « Utilisé dans … ». *Dupliquer*,
   *Supprimer* (refusé si le profil est encore dans un programme). Un nouveau

@@ -22,7 +22,7 @@ from .const import (
     DOMAIN,
     allowed_profiles,
     describe_profile,
-    profile_color,
+    color_of,
 )
 from .scheduler import SplitScheduler
 
@@ -140,7 +140,7 @@ def ws_info(
                 {
                     "id": pid,
                     "name": profile["name"],
-                    "color": profile_color(profile["name"]),
+                    "color": color_of(profile),
                     "summary": describe_profile(profile, language),
                 }
                 for pid, profile in scheduler.profiles.items()
